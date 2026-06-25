@@ -1,6 +1,6 @@
 {
   "name": "boot",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Dropbox for ~/code — sync your workspace structure across machines, hydrate repos on access, and never build on a stale base.",
   "type": "module",
   "bin": {
