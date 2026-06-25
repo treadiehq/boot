@@ -36,6 +36,10 @@ importers:
       vitest:
         specifier: ^3.2.6
         version: 3.2.6(@types/node@26.0.1)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.9.0)
+    optionalDependencies:
+      fuse-native:
+        specifier: ^2.2.6
+        version: 2.2.6
 
 packages:
 
@@ -665,6 +669,22 @@ packages:
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
     os: [darwin]
 
+  fuse-native@2.2.6:
+    resolution: {integrity: sha512-Y5wXd7vUsWWWIIHbjluv7jKZgPZaSVA5YWaW3I5fXIJfcGWL6IRUgoBUveQAq+D8cG9cCiGNahv9CeToccCXrw==}
+    hasBin: true
+
+  fuse-shared-library-darwin@1.1.3:
+    resolution: {integrity: sha512-4Q8gMxyMl1+gwHGpiYUoKKpi7xq8WcPo0TvJvjZzHMuCiszouu2GgEs6SJAqPB3LjfmEkl6kPV+2Oluczr0Nig==}
+
+  fuse-shared-library-linux-arm@1.0.0:
+    resolution: {integrity: sha512-Dj4ssxo1/MKGvOsVWRblSRu+o5F5OJTrVPDkjSyGDU2yKvVnIzQSwy1deiWA0qCcS/Q8iJMlZaCpCcZWSwvoug==}
+
+  fuse-shared-library-linux@1.0.1:
+    resolution: {integrity: sha512-07MQRSobrBKwW4D7oKm0gM2TwgvZWb+gC08JdiYDG4KBTncxk9ssqEDiDMKll8hpseZufsY2w1yc/feOu2DPmQ==}
+
+  fuse-shared-library@1.1.1:
+    resolution: {integrity: sha512-EfgTo/eS1euZFUe7x8KqyA40hV4DwP7kqp1VNZApu2nlPnJv8SanraBE3VXyX7ff41sxw7M0oWY7re3G3wnZVA==}
+
   get-stream@9.0.1:
     resolution: {integrity: sha512-kVCxPF3vQM/N0B1PmoqVUqgHP+EeVjmZSQn+1oCRPxd2P21P2F19lIgbR3HBosbB1PUhOAoctJnfEn2GbN2eZA==}
     engines: {node: '>=18'}
@@ -672,6 +692,9 @@ packages:
   human-signals@8.0.1:
     resolution: {integrity: sha512-eKCa6bwnJhvxj14kZk5NCPc6Hb6BdsU9DZcOnmQKSnO1VKrfV0zCvtttPZUsBvjmNDn8rpcJfpwSYnHBjc95MQ==}
     engines: {node: '>=18.18.0'}
+
+  inherits@2.0.4:
+    resolution: {integrity: sha512-k/vGaX4/Yla3WzyMCvTQOXYeIHvqOKtnqBduzTHpzpQZzAskKMhZ2K+EnBiSM9zGSoIFeMpXKxa4dYeZIQqewQ==}
 
   is-plain-obj@4.1.0:
     resolution: {integrity: sha512-+Pgi+vMuUNkJyExiMBt5IlFoMyKnr5zhJ4Uspz58WOhBF5QoIZkFyNHIbBAtHwzVAgk5RtndVNsDRN61/mmDqg==}
@@ -798,6 +821,16 @@ packages:
   nanoid@3.3.15:
     resolution: {integrity: sha512-y7Wygv/7mEOvxTuEQDB8StXdMRBWf1kR/tlhAzBRUFkB2jfcLOAxO/SHmOO2zgz1pVgK29/kyupn059/bCHdjA==}
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
+    hasBin: true
+
+  nanoresource@1.3.0:
+    resolution: {integrity: sha512-OI5dswqipmlYfyL3k/YMm7mbERlh4Bd1KuKdMHpeoVD1iVxqxaTMKleB4qaA2mbQZ6/zMNSxCXv9M9P/YbqTuQ==}
+
+  napi-macros@2.2.2:
+    resolution: {integrity: sha512-hmEVtAGYzVQpCKdbQea4skABsdXW4RUh5t5mJ2zzqowJS2OyXZTU1KhDVFhx+NlWZ4ap9mqR9TcDO3LTTttd+g==}
+
+  node-gyp-build@4.8.4:
+    resolution: {integrity: sha512-LA4ZjwlnUblHVgq0oBF3Jl/6h/Nvs5fzBLwdEF4nuxnFdsfajde4WfxtJr3CaiH+F6ewcIB/q4jQ4UzPyid+CQ==}
     hasBin: true
 
   npm-run-path@6.0.0:
@@ -1545,12 +1578,39 @@ snapshots:
   fsevents@2.3.3:
     optional: true
 
+  fuse-native@2.2.6:
+    dependencies:
+      fuse-shared-library: 1.1.1
+      nanoresource: 1.3.0
+      napi-macros: 2.2.2
+      node-gyp-build: 4.8.4
+    optional: true
+
+  fuse-shared-library-darwin@1.1.3:
+    optional: true
+
+  fuse-shared-library-linux-arm@1.0.0:
+    optional: true
+
+  fuse-shared-library-linux@1.0.1:
+    optional: true
+
+  fuse-shared-library@1.1.1:
+    dependencies:
+      fuse-shared-library-darwin: 1.1.3
+      fuse-shared-library-linux: 1.0.1
+      fuse-shared-library-linux-arm: 1.0.0
+    optional: true
+
   get-stream@9.0.1:
     dependencies:
       '@sec-ant/readable-stream': 0.4.1
       is-stream: 4.0.1
 
   human-signals@8.0.1: {}
+
+  inherits@2.0.4:
+    optional: true
 
   is-plain-obj@4.1.0: {}
 
@@ -1642,6 +1702,17 @@ snapshots:
       thenify-all: 1.6.0
 
   nanoid@3.3.15: {}
+
+  nanoresource@1.3.0:
+    dependencies:
+      inherits: 2.0.4
+    optional: true
+
+  napi-macros@2.2.2:
+    optional: true
+
+  node-gyp-build@4.8.4:
+    optional: true
 
   npm-run-path@6.0.0:
     dependencies:
