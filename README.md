@@ -1,0 +1,61 @@
+# boot
+
+**Dropbox for `~/code` — it syncs the _map_ of your workspace, not the files.**
+
+You have a folder full of git repos. boot remembers its shape, which repos live
+where, and recreates it on any other machine. Repos arrive as tiny
+**placeholders** and turn into real clones the moment you open them, so a new
+laptop (or cloud agent) is ready in seconds, not gigabytes.
+
+It also syncs your **env vars** (encrypted) and runs a small background **daemon**
+so no machine ever builds on a stale `main`.
+
+> boot doesn't replace Git or live-sync your edits. It syncs structure and
+> secrets, not a real-time copy of your files.
+
+## Install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/<owner>/openboot/main/scripts/install.sh | bash
+```
+
+Needs Node 18+ and Git.
+
+## Use it
+
+One command sets up a machine. It links the workspace, creates a secret key,
+installs the shell hook and background daemon, and prints a health check:
+
+```bash
+boot setup git@github.com:me/my-code-map.git ~/code
+```
+
+Run the same command on your next machine and your whole layout shows up as
+placeholders that hydrate when you touch them. It's safe to re-run anytime.
+
+## Handy commands
+
+| Command | What it does |
+| --- | --- |
+| `boot setup <remote> [path]` | Set up (or update) a machine in one shot. |
+| `boot push` | Publish this machine's layout to the shared map. |
+| `boot pull` | Pull the latest layout; add `--dry-run` to preview first. |
+| `boot hydrate <path>` | Turn a placeholder into a real clone. |
+| `boot env key share` / `receive` | Move your encrypted secrets to a new machine with a passphrase. |
+| `boot agent <remote> [path]` | One-shot bootstrap for CI / cloud agents. |
+| `boot doctor --system` | Check how a machine is wired up (link, key, hook, daemon, FUSE). |
+
+Env-var sync, the Dropbox-folder transport, FUSE mounts, and the full command
+reference live in **[docs/detailed.md](docs/detailed.md)**.
+
+## Develop
+
+```bash
+pnpm dev <cmd>   # run from source
+pnpm build       # bundle
+pnpm test        # tests
+```
+
+## License
+
+[FSL-1.1-MIT](LICENSE)

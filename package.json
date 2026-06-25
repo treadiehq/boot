@@ -1,0 +1,48 @@
+{
+  "name": "boot",
+  "version": "0.0.1",
+  "description": "boot — a portable developer workspace map with lazy hydration. Dropbox for ~/code, structure only.",
+  "type": "module",
+  "bin": {
+    "boot": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsup src/index.ts --format esm,cjs --dts",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "lint": "tsc --noEmit",
+    "qa": "bash scripts/qa.sh"
+  },
+  "keywords": [
+    "cli",
+    "git",
+    "workspace",
+    "developer-tools",
+    "boot"
+  ],
+  "license": "FSL-1.1-MIT",
+  "packageManager": "pnpm@10.34.3",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "commander": "^15.0.0",
+    "execa": "^9.6.1",
+    "yaml": "^2.9.0",
+    "zod": "^4.4.3"
+  },
+  "optionalDependencies": {
+    "fuse-native": "^2.2.6"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.1",
+    "tsup": "^8.5.1",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3",
+    "vitest": "^3.2.6"
+  }
+}
