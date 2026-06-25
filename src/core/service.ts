@@ -20,7 +20,7 @@ export function serviceId(root: string): string {
 }
 
 export function launchdLabel(root: string): string {
-  return `com.openboot.${serviceId(root)}`;
+  return `com.boot.${serviceId(root)}`;
 }
 
 export function systemdUnitName(root: string): string {

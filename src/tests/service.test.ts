@@ -41,7 +41,7 @@ describe("service platform + identity", () => {
 
   it("places files in the expected per-user locations", () => {
     const ld = serviceFilePath("launchd", "/Users/me/code", "/Users/me");
-    expect(ld).toMatch(/Library\/LaunchAgents\/com\.openboot\.[0-9a-f]+\.plist$/);
+    expect(ld).toMatch(/Library\/LaunchAgents\/com\.boot\.[0-9a-f]+\.plist$/);
     const sd = serviceFilePath("systemd", "/home/me/code", "/home/me");
     expect(sd).toMatch(/\.config\/systemd\/user\/boot-[0-9a-f]+\.service$/);
   });
@@ -51,7 +51,7 @@ describe("renderers", () => {
   it("renders a launchd plist with the full program arguments", () => {
     const plist = renderLaunchdPlist("/Users/me/code", spec("/Users/me/code"));
     expect(plist).toContain("<key>Label</key>");
-    expect(plist).toContain("com.openboot.");
+    expect(plist).toContain("com.boot.");
     expect(plist).toContain("<string>/usr/bin/node</string>");
     expect(plist).toContain("<string>/opt/boot/index.js</string>");
     expect(plist).toContain("<string>daemon</string>");

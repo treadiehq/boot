@@ -32,14 +32,14 @@ copy of the files you're editing.
 One line per machine (clones, builds, and symlinks `boot` onto your PATH):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/<owner>/openboot/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/treadiehq/boot/main/scripts/install.sh | bash
 ```
 
 The installer honors a few environment overrides:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `BOOT_REPO` | `https://github.com/openboot/openboot.git` | repo to clone when not run from a checkout |
+| `BOOT_REPO` | `https://github.com/treadiehq/boot.git` | repo to clone when not run from a checkout |
 | `BOOT_REF` | `main` | branch/tag/commit to install |
 | `BOOT_APP_DIR` | `~/.boot/app` | where the built app lives |
 | `BOOT_BIN_DIR` | `~/.local/bin` | where the `boot` symlink goes |
@@ -309,7 +309,7 @@ boot daemon status ~/code       # shows "Service: installed" + the last sync
 boot daemon uninstall ~/code    # stop + remove it
 ```
 
-- **macOS** writes `~/Library/LaunchAgents/com.openboot.<id>.plist`
+- **macOS** writes `~/Library/LaunchAgents/com.boot.<id>.plist`
   (`RunAtLoad` + `KeepAlive`) and loads it with `launchctl bootstrap`.
 - **Linux** writes `~/.config/systemd/user/boot-<id>.service`
   (`Restart=always`) and enables it with `systemctl --user enable --now`.

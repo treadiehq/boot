@@ -10,13 +10,21 @@ laptop (or cloud agent) is ready in seconds, not gigabytes.
 It also syncs your **env vars** (encrypted) and runs a small background **daemon**
 so no machine ever builds on a stale `main`.
 
+Two promises, really:
+
+- **Never build on a stale base.** The daemon keeps every machine current and
+  fast-forwards clean repos, so you stop wasting time on "wait, why did it build
+  the old `main`?"
+- **A fresh box or cloud agent has your exact workspace in seconds.** One command
+  and your whole layout is there — repos hydrate the moment you touch them.
+
 > boot doesn't replace Git or live-sync your edits. It syncs structure and
 > secrets, not a real-time copy of your files.
 
 ## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/<owner>/openboot/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/treadiehq/boot/main/scripts/install.sh | bash
 ```
 
 Needs Node 18+ and Git.

@@ -2,7 +2,7 @@
 #
 # boot installer — one line per machine.
 #
-#   curl -fsSL https://raw.githubusercontent.com/<owner>/openboot/main/scripts/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/treadiehq/boot/main/scripts/install.sh | bash
 #
 # Or, from a local checkout:
 #
@@ -10,14 +10,14 @@
 #
 # Environment overrides:
 #   BOOT_REPO     git URL to clone when not run from a checkout
-#                 (default: https://github.com/openboot/openboot.git)
+#                 (default: https://github.com/treadiehq/boot.git)
 #   BOOT_REF      branch/tag/commit to install (default: main)
 #   BOOT_APP_DIR  where to keep the built app (default: ~/.boot/app)
 #   BOOT_BIN_DIR  where to symlink the `boot` binary (default: ~/.local/bin)
 #
 set -euo pipefail
 
-BOOT_REPO="${BOOT_REPO:-https://github.com/openboot/openboot.git}"
+BOOT_REPO="${BOOT_REPO:-https://github.com/treadiehq/boot.git}"
 BOOT_REF="${BOOT_REF:-main}"
 BOOT_APP_DIR="${BOOT_APP_DIR:-$HOME/.boot/app}"
 BOOT_BIN_DIR="${BOOT_BIN_DIR:-$HOME/.local/bin}"
