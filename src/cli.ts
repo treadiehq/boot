@@ -86,7 +86,7 @@ export function buildProgram(): Command {
     .option("--no-daemon", "skip installing the managed daemon service")
     .option("--no-key", "skip secret-key setup")
     .option("--import-key <base64>", "install a secret key exported from another machine")
-    .option("--shell <shell>", "shell for the hook (zsh|bash|fish; auto-detected otherwise)")
+    .option("--shell <shell>", "shell for the hook (zsh|bash|fish|powershell; auto-detected otherwise)")
     .option("--interval <seconds>", "daemon sync interval", (v) => Number.parseInt(v, 10))
     .option("--mount <mountpoint>", "suggest this on-read mountpoint in the summary")
     .action((remote: string | undefined, workspacePath: string, options: SetupOptions) =>
@@ -153,7 +153,7 @@ export function buildProgram(): Command {
   program
     .command("shell-hook")
     .description("print a shell snippet that hydrates placeholders when you cd into them")
-    .argument("[shell]", "zsh, bash, or fish (auto-detected from $SHELL if omitted)")
+    .argument("[shell]", "zsh, bash, fish, or powershell (auto-detected if omitted)")
     .action((shell?: string) => shellHookCommand(shell));
 
   program
@@ -381,7 +381,7 @@ export function buildProgram(): Command {
 
   daemon
     .command("install")
-    .description("install the daemon as a managed service (launchd on macOS, systemd on Linux)")
+    .description("install the daemon as a managed service (launchd/macOS, systemd/Linux, Scheduled Tasks/Windows)")
     .argument("[workspacePath]", "workspace directory", ".")
     .option("--interval <seconds>", "seconds between syncs", (v) => Number.parseInt(v, 10))
     .option("--entry <path>", "path to the boot CLI entry the service should run")

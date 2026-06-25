@@ -30,26 +30,40 @@ copy of the files you're editing.
 ## Install
 
 One line per machine. It downloads a standalone binary for your platform from
-the latest GitHub Release and drops it on your PATH — no Node, no build step:
+the latest GitHub Release and drops it on your PATH — no Node, no build step.
+
+**macOS / Linux:**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/treadiehq/boot/main/scripts/install.sh | bash
 ```
 
-Binaries are published for macOS and Linux on `x64` and `arm64`. You only need
-**Git** on your PATH at runtime (boot shells out to it to clone/hydrate repos).
+**Windows (PowerShell):**
 
-The installer honors a few environment overrides:
+```powershell
+irm https://raw.githubusercontent.com/treadiehq/boot/main/scripts/install.ps1 | iex
+```
+
+Binaries are published for macOS and Linux on `x64` and `arm64`, and Windows on
+`x64` (which also runs on Windows ARM via emulation). You only need **Git** on
+your PATH at runtime (boot shells out to it to clone/hydrate repos).
+
+The installers honor a few environment overrides:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `BOOT_VERSION` | `latest` | release tag to install, e.g. `v0.1.0` |
-| `BOOT_BIN_DIR` | `/usr/local/bin` if writable, else `~/.local/bin` | where the `boot` binary is installed |
+| `BOOT_BIN_DIR` | macOS/Linux: `/usr/local/bin` if writable, else `~/.local/bin`. Windows: `%LOCALAPPDATA%\boot\bin` | where the `boot` binary is installed |
 | `BOOT_REPO` | `treadiehq/boot` | `owner/repo` to download releases from |
 
 ```bash
-# pin a specific version
+# pin a specific version (macOS/Linux)
 BOOT_VERSION=v0.1.0 curl -fsSL https://raw.githubusercontent.com/treadiehq/boot/main/scripts/install.sh | bash
+```
+
+```powershell
+# pin a specific version (Windows)
+$env:BOOT_VERSION = "v0.1.0"; irm https://raw.githubusercontent.com/treadiehq/boot/main/scripts/install.ps1 | iex
 ```
 
 From a local clone instead (for development), build a binary with [Bun](https://bun.sh)
@@ -71,18 +85,20 @@ boot update --ref v1.2   # install a specific release tag
 ```
 
 For a binary install, `boot update` re-runs the installer to fetch the latest
-release (replacing the running binary in place is safe on Unix). For a
-from-source git checkout, it instead fetches the latest source and rebuilds, and
-refuses to touch a checkout with local changes.
+release. On Unix that replaces the running binary in place; on Windows the
+PowerShell installer renames the live `boot.exe` aside (Windows allows renaming
+but not overwriting a running exe) and drops the new one in, so a new terminal
+picks it up. For a from-source git checkout, it instead fetches the latest
+source and rebuilds, and refuses to touch a checkout with local changes.
 
 ## Releasing
 
 Releases are tag-driven. Push a semver tag and the
 [`Release` workflow](../.github/workflows/release.yml) builds a standalone `boot`
-binary for each platform (Linux/macOS × x64/arm64) with Bun, ad-hoc signs the
-macOS binaries, and publishes them — plus a `SHA256SUMS` — as assets on a GitHub
-Release. The version is baked into each binary at build time (`--define
-__BOOT_VERSION__`). Because `install.sh` and `boot update` pull from
+binary for each platform (Linux/macOS × x64/arm64, plus Windows x64) with Bun,
+ad-hoc signs the macOS binaries, and publishes them — plus a `SHA256SUMS` — as
+assets on a GitHub Release. The version is baked into each binary at build time
+(`--define __BOOT_VERSION__`). Because the installers and `boot update` pull from
 `/releases/latest`, cutting a tag is all it takes to ship a new version.
 
 ```bash
@@ -113,9 +129,11 @@ It performs, in order:
 2. **Secret key** — keeps an existing key; on a first machine offers to create
    one; on a machine that's missing the key for *existing* encrypted scopes, it
    prompts you to import it (`--import-key <base64>` to do it non-interactively).
-3. **Shell hook** — offers to append `eval "$(boot shell-hook <shell>)"` to your
-   rc file so repos hydrate on `cd` (`--shell`, `--no-hook`).
-4. **Background daemon** — offers to install the managed launchd/systemd service
+3. **Shell hook** — offers to append the hydrate-on-`cd` snippet to your shell rc
+   (or PowerShell `$PROFILE` on Windows) so repos hydrate as you navigate
+   (`--shell`, `--no-hook`).
+4. **Background daemon** — offers to install the managed service — launchd
+   (macOS), systemd `--user` (Linux), or a Scheduled Task (Windows)
    (`--interval`, `--no-daemon`).
 5. **On-read mount** — reports whether FUSE is available and the exact
    `boot mount` command (it's a foreground process, so setup doesn't start it).
@@ -162,7 +180,7 @@ From a clone during development the same thing looks like
 | `import <manifestPath> <targetPath>` | *(snapshot, lower-level; alias `restore`)* Recreate folders and clone repos from a snapshot file. `--lazy` writes placeholders instead of cloning. Never overwrites an existing repo. |
 | `hydrate <repoPath>` | Clone a placeholder repo into its folder and mark it hydrated. |
 | `enter [targetPath]` | Hydrate the nearest placeholder at/above a path, the on-access trigger. `-q, --quiet` for the shell hook. |
-| `shell-hook [shell]` | Print a `zsh`/`bash`/`fish` snippet that runs `enter` on every `cd`, so navigating into a placeholder hydrates it. |
+| `shell-hook [shell]` | Print a `zsh`/`bash`/`fish`/`powershell` snippet that runs `enter` on every `cd`, so navigating into a placeholder hydrates it. |
 | `watch [workspacePath]` | Watch a workspace and hydrate placeholders the moment a tool writes into one. `--debounce <ms>`. |
 | `mount <workspacePath> <mountpoint>` | Mount the workspace as a read-write virtual FS that hydrates a repo on first **read** (`cat`, editor open, grep). Needs FUSE (`fuse-native` + macFUSE/libfuse). `--read-only`, `--debug`. |
 | `unmount <mountpoint>` | Force-unmount a workspace mounted with `mount`. |
@@ -180,7 +198,7 @@ From a clone during development the same thing looks like
 | `daemon start [workspacePath]` | Run the background sync loop (pull → reconcile → fast-forward → push). `--once`, `--interval <s>`, `--eager`, `--no-fetch`, `--no-fast-forward`. |
 | `daemon stop [workspacePath]` | Stop the running daemon for a workspace. |
 | `daemon status [workspacePath]` | Show whether the daemon is running, whether a managed service is installed, and the last sync. |
-| `daemon install [workspacePath]` | Install the daemon as a managed OS service (launchd on macOS, systemd on Linux) so it starts on boot. `--interval <s>`, `--entry <path>`. |
+| `daemon install [workspacePath]` | Install the daemon as a managed OS service (launchd on macOS, systemd on Linux, a Scheduled Task on Windows) so it starts on login. `--interval <s>`, `--entry <path>`. |
 | `daemon uninstall [workspacePath]` | Stop and remove the managed service for a workspace. |
 
 ## Ignore rules — `.bootignore`
@@ -348,7 +366,7 @@ daemon:
 in the background, install it as an OS service:
 
 ```bash
-boot daemon install ~/code      # launchd LaunchAgent (macOS) / systemd --user unit (Linux)
+boot daemon install ~/code      # launchd (macOS) / systemd --user (Linux) / Scheduled Task (Windows)
 boot daemon status ~/code       # shows "Service: installed" + the last sync
 boot daemon uninstall ~/code    # stop + remove it
 ```
@@ -357,6 +375,9 @@ boot daemon uninstall ~/code    # stop + remove it
   (`RunAtLoad` + `KeepAlive`) and loads it with `launchctl bootstrap`.
 - **Linux** writes `~/.config/systemd/user/boot-<id>.service`
   (`Restart=always`) and enables it with `systemctl --user enable --now`.
+- **Windows** registers a Task Scheduler task `boot-<id>` (logon trigger,
+  restart-on-failure) with `schtasks /Create /XML`, keeping the task XML under
+  `~/.boot/services/` so `daemon status`/`uninstall` can find it again.
 
 Each workspace gets its own service (`<id>` is a hash of the workspace path), so
 you can manage several independently. Logs go to `~/code/.boot/daemon.log`. The
@@ -385,6 +406,12 @@ any part of the workspace pulls it down right then:
 
 ```bash
 eval "$(boot shell-hook zsh)"     # ~/.zshrc   (also: bash | fish)
+```
+
+On Windows, add the PowerShell hook to your `$PROFILE` instead:
+
+```powershell
+Invoke-Expression (& boot shell-hook powershell | Out-String)
 ```
 
 Now `cd ~/code/apps/kplane` hydrates `kplane` in the background before you even

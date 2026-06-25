@@ -6,8 +6,11 @@ import path from "node:path";
 import {
   detectServicePlatform,
   installCommands,
+  programArguments,
   renderLaunchdPlist,
+  renderSchtasksXml,
   renderSystemdUnit,
+  scheduledTaskName,
   serviceFilePath,
   serviceId,
   uninstallCommands,
@@ -31,7 +34,8 @@ describe("service platform + identity", () => {
   it("maps platforms to managers", () => {
     expect(detectServicePlatform("darwin")).toBe("launchd");
     expect(detectServicePlatform("linux")).toBe("systemd");
-    expect(detectServicePlatform("win32")).toBeNull();
+    expect(detectServicePlatform("win32")).toBe("schtasks");
+    expect(detectServicePlatform("freebsd")).toBeNull();
   });
 
   it("derives a stable id that varies by root", () => {
@@ -44,6 +48,35 @@ describe("service platform + identity", () => {
     expect(ld).toMatch(/Library\/LaunchAgents\/com\.boot\.[0-9a-f]+\.plist$/);
     const sd = serviceFilePath("systemd", "/home/me/code", "/home/me");
     expect(sd).toMatch(/\.config\/systemd\/user\/boot-[0-9a-f]+\.service$/);
+    const win = serviceFilePath("schtasks", "C:\\Users\\me\\code", "C:\\Users\\me");
+    expect(win).toContain(".boot");
+    expect(win).toMatch(/boot-[0-9a-f]+\.xml$/);
+  });
+});
+
+describe("program arguments", () => {
+  it("includes the script for a source install", () => {
+    expect(programArguments(spec("/home/me/code"))).toEqual([
+      "/usr/bin/node",
+      "/opt/boot/index.js",
+      "daemon",
+      "start",
+      "/home/me/code",
+      "--interval",
+      "45",
+    ]);
+  });
+
+  it("drops the script for a standalone binary (empty entry)", () => {
+    const standalone: ServiceSpec = { ...spec("/home/me/code"), node: "/usr/local/bin/boot", entry: "" };
+    expect(programArguments(standalone)).toEqual([
+      "/usr/local/bin/boot",
+      "daemon",
+      "start",
+      "/home/me/code",
+      "--interval",
+      "45",
+    ]);
   });
 });
 
@@ -77,6 +110,28 @@ describe("renderers", () => {
     const unit = renderSystemdUnit("/home/me/my code", withSpace);
     expect(unit).toContain('"/home/me/my code"');
   });
+
+  it("renders a Task Scheduler XML that runs the boot binary directly", () => {
+    const root = "C:\\Users\\me\\code";
+    const winSpec: ServiceSpec = {
+      ...spec(root),
+      root,
+      node: "C:\\Users\\me\\AppData\\Local\\boot\\bin\\boot.exe",
+      entry: "",
+    };
+    const xml = renderSchtasksXml(root, winSpec);
+    expect(xml).toContain("<LogonTrigger>");
+    expect(xml).toContain("<Command>C:\\Users\\me\\AppData\\Local\\boot\\bin\\boot.exe</Command>");
+    expect(xml).toContain("<Arguments>daemon start C:\\Users\\me\\code --interval 45</Arguments>");
+    expect(xml).toContain("<RestartOnFailure>");
+  });
+
+  it("quotes Task Scheduler arguments that contain spaces", () => {
+    const root = "C:\\Users\\me\\my code";
+    const winSpec: ServiceSpec = { ...spec(root), root, node: "C:\\boot.exe", entry: "" };
+    const xml = renderSchtasksXml(root, winSpec);
+    expect(xml).toContain('"C:\\Users\\me\\my code"');
+  });
 });
 
 describe("command plans", () => {
@@ -95,6 +150,18 @@ describe("command plans", () => {
     const remove = uninstallCommands("systemd", "/home/me/code", 1000);
     expect(remove[0]?.ignoreError).toBe(true);
     expect(remove[0]?.argv).toContain("disable");
+  });
+
+  it("plans schtasks create (idempotent /F) + run, and tolerant delete", () => {
+    const root = "C:\\Users\\me\\code";
+    const task = scheduledTaskName(root);
+    const install = installCommands("schtasks", root, "C:\\path\\to.xml", 0);
+    expect(install[0]?.argv).toEqual(["schtasks", "/Create", "/TN", task, "/XML", "C:\\path\\to.xml", "/F"]);
+    expect(install.some((c) => c.argv.includes("/Run"))).toBe(true);
+
+    const remove = uninstallCommands("schtasks", root, 0);
+    expect(remove.every((c) => c.ignoreError)).toBe(true);
+    expect(remove.some((c) => c.argv.includes("/Delete") && c.argv.includes(task))).toBe(true);
   });
 });
 

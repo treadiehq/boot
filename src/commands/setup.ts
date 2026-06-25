@@ -61,7 +61,7 @@ async function offer(question: string, optValue: boolean | undefined, yes: boole
 function resolveSetupShell(option: string | undefined): SupportedShell | null {
   if (option) {
     if (!isSupportedShell(option)) {
-      throw new Error(`Unsupported shell "${option}". Supported: zsh, bash, fish.`);
+      throw new Error(`Unsupported shell "${option}". Supported: zsh, bash, fish, powershell.`);
     }
     return option;
   }
@@ -224,7 +224,7 @@ async function setupHook(options: SetupOptions): Promise<void> {
   const shell = resolveSetupShell(options.shell);
   if (!shell) {
     logger.warn("could not detect your shell; add it manually:");
-    logger.info(colors.dim('   eval "$(boot shell-hook zsh)"   # or bash | fish'));
+    logger.info(colors.dim('   eval "$(boot shell-hook zsh)"   # or bash | fish | powershell'));
     return;
   }
   const rcPath = rcPathFor(shell, options.home);

@@ -23,12 +23,20 @@ Two promises, really:
 
 ## Install
 
+**macOS / Linux** (needs `curl`):
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/treadiehq/boot/main/scripts/install.sh | bash
 ```
 
-Installs a standalone binary (Linux/macOS, x64/arm64) — just needs `curl`. Git
-is required for boot's repo syncing. Update anytime with `boot update`.
+**Windows** (PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/treadiehq/boot/main/scripts/install.ps1 | iex
+```
+
+Installs a standalone binary (macOS/Linux on x64+arm64, Windows on x64). Git is
+required for boot's repo syncing. Update anytime with `boot update`.
 
 ## Use it
 

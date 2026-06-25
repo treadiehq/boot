@@ -10,6 +10,7 @@ import {
   installCommands,
   reloadCommand,
   renderService,
+  serviceFileEncoding,
   serviceFilePath,
   serviceName,
   uninstallCommands,
@@ -44,6 +45,17 @@ export interface ServiceUninstallOptions {
   runner?: ServiceRunner;
 }
 
+const NODE_LIKE_EXES = new Set(["node", "node.exe", "bun", "bun.exe"]);
+
+/**
+ * Whether boot is running as a standalone compiled binary (a renamed `boot`
+ * executable) rather than node/bun executing a script. The managed service must
+ * invoke the binary directly (no script argument) in that case.
+ */
+function isStandaloneBinary(): boolean {
+  return !NODE_LIKE_EXES.has(path.basename(process.execPath).toLowerCase());
+}
+
 /** Absolute path to the boot CLI entry currently running. */
 function resolveEntry(): string {
   const argv1 = process.argv[1];
@@ -53,7 +65,10 @@ function resolveEntry(): string {
 
 /** A PATH that includes common git locations on top of the current environment. */
 function buildPathEnv(): string {
-  const extra = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"];
+  const extra =
+    process.platform === "win32"
+      ? ["C:\\Program Files\\Git\\cmd", "C:\\Program Files\\Git\\bin"]
+      : ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"];
   const current = process.env.PATH ? process.env.PATH.split(path.delimiter) : [];
   return [...new Set([...extra, ...current])].join(path.delimiter);
 }
@@ -79,15 +94,17 @@ export async function daemonInstall(
   const platform = options.platform ?? detectServicePlatform();
   if (!platform) {
     throw new Error(
-      `Managed services are only supported on macOS (launchd) and Linux (systemd). ` +
-        `On this platform, run \`boot daemon start\` yourself.`,
+      `Managed services are supported on macOS (launchd), Linux (systemd), and Windows ` +
+        `(Scheduled Tasks). On this platform, run \`boot daemon start\` yourself.`,
     );
   }
 
   const home = options.home ?? os.homedir();
   const config = await loadConfig(root);
   const intervalSeconds = options.intervalSeconds ?? config.daemonIntervalSeconds;
-  const entry = options.entry ?? resolveEntry();
+  // A standalone binary is its own launcher (no script arg); a source install
+  // runs `node <entry>`.
+  const entry = options.entry ?? (isStandaloneBinary() ? "" : resolveEntry());
 
   if (entry.endsWith(".ts")) {
     logger.warn(
@@ -111,7 +128,11 @@ export async function daemonInstall(
 
   const filePath = serviceFilePath(platform, root, home);
   await fs.mkdir(path.dirname(filePath), { recursive: true });
-  await fs.writeFile(filePath, renderService(platform, root, spec), "utf8");
+  // schtasks wants UTF-16 with a BOM; launchd/systemd are plain UTF-8.
+  const encoding = serviceFileEncoding(platform);
+  const rendered = renderService(platform, root, spec);
+  const data = encoding === "utf16le" ? `\ufeff${rendered}` : rendered;
+  await fs.writeFile(filePath, data, encoding);
 
   logger.heading(`Installing ${colors.cyan(serviceName(platform, root))} (${platform})`);
   logger.success(`wrote ${filePath}`);

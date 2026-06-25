@@ -15,8 +15,9 @@ export interface UpdateOptions {
   ref?: string;
 }
 
-/** Public install script — used to re-download standalone binary installs. */
+/** Public install scripts — used to re-download standalone binary installs. */
 const INSTALL_URL = "https://raw.githubusercontent.com/treadiehq/boot/main/scripts/install.sh";
+const INSTALL_URL_PS1 = "https://raw.githubusercontent.com/treadiehq/boot/main/scripts/install.ps1";
 
 /**
  * Walk up from a starting file to the git checkout that boot is installed in
@@ -79,6 +80,11 @@ export async function updateCommand(options: UpdateOptions = {}): Promise<void> 
 
 /** Re-run the installer to download the latest released binary for this platform. */
 async function updateBinary(options: UpdateOptions): Promise<void> {
+  if (process.platform === "win32") {
+    await updateBinaryWindows(options);
+    return;
+  }
+
   if (!(await hasCommand("bash")) || !(await hasCommand("curl"))) {
     logger.error("self-update needs `curl` and `bash` on PATH.");
     logger.next(`Re-run the installer manually:  curl -fsSL ${INSTALL_URL} | bash`);
@@ -95,6 +101,25 @@ async function updateBinary(options: UpdateOptions): Promise<void> {
   // the old inode while the installer writes the new file into place.
   await execa("bash", ["-c", `curl -fsSL ${INSTALL_URL} | bash`], { env, stdio: "inherit" });
   logger.success("boot updated. Run `boot --version` to confirm.");
+}
+
+/** Windows self-update: run the PowerShell installer, which swaps the binary in place. */
+async function updateBinaryWindows(options: UpdateOptions): Promise<void> {
+  const pwsh = (await hasCommand("pwsh")) ? "pwsh" : "powershell";
+  const target = options.ref ?? "latest";
+  logger.heading(`Updating boot (${colors.cyan(target)} release)`);
+
+  const env = { ...process.env };
+  if (options.ref) env.BOOT_VERSION = options.ref;
+
+  // The installer renames the running boot.exe aside before writing the new one,
+  // so an in-place self-update works even though Windows locks the live binary.
+  await execa(
+    pwsh,
+    ["-NoProfile", "-Command", `irm ${INSTALL_URL_PS1} | iex`],
+    { env, stdio: "inherit" },
+  );
+  logger.success("boot updated. Open a new terminal and run `boot --version` to confirm.");
 }
 
 /** Pull the latest source into a git checkout and rebuild, mirroring the installer. */

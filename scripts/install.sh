@@ -34,7 +34,10 @@ OS="$(uname -s)"
 case "$OS" in
   Linux)  OS="linux" ;;
   Darwin) OS="darwin" ;;
-  *) die "unsupported OS: $OS (boot supports Linux and macOS)" ;;
+  MINGW*|MSYS*|CYGWIN*|Windows_NT)
+    die "this is the Unix installer. On Windows, install with PowerShell:
+  irm https://raw.githubusercontent.com/${REPO}/main/scripts/install.ps1 | iex" ;;
+  *) die "unsupported OS: $OS (boot supports Linux, macOS, and Windows)" ;;
 esac
 
 ARCH="$(uname -m)"

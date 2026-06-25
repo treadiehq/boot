@@ -7,34 +7,42 @@ import { isLinked, readLinkConfig } from "./map";
 import { keyExists, secretKeyPath } from "./secrets";
 import { detectServicePlatform, serviceFilePath, type ServicePlatform } from "./service";
 
-export type SupportedShell = "zsh" | "bash" | "fish";
+export type SupportedShell = "zsh" | "bash" | "fish" | "powershell";
 
-export const SHELLS: SupportedShell[] = ["zsh", "bash", "fish"];
+export const SHELLS: SupportedShell[] = ["zsh", "bash", "fish", "powershell"];
 
 export function isSupportedShell(value: string): value is SupportedShell {
   return (SHELLS as string[]).includes(value);
 }
 
-/** Best-effort detection of the current shell from `$SHELL`. */
+/** Best-effort detection of the current shell from `$SHELL`, defaulting to PowerShell on Windows. */
 export function detectShell(): SupportedShell | null {
   const shell = process.env.SHELL;
-  if (!shell) return null;
-  const name = path.basename(shell);
-  return isSupportedShell(name) ? name : null;
+  if (shell) {
+    const name = path.basename(shell).toLowerCase().replace(/\.exe$/, "");
+    if (isSupportedShell(name)) return name;
+    if (name === "pwsh") return "powershell";
+  }
+  // Windows rarely sets $SHELL; PowerShell is the safe default there.
+  if (process.platform === "win32") return "powershell";
+  return null;
 }
 
-/** The rc file boot's shell hook belongs in for a given shell. */
+/** The rc/profile file boot's shell hook belongs in for a given shell. */
 export function rcPathFor(shell: SupportedShell, home: string = os.homedir()): string {
   if (shell === "zsh") return path.join(home, ".zshrc");
   if (shell === "bash") return path.join(home, ".bashrc");
+  if (shell === "powershell") {
+    return path.join(home, "Documents", "PowerShell", "Microsoft.PowerShell_profile.ps1");
+  }
   return path.join(home, ".config", "fish", "config.fish");
 }
 
 /** The one-liner that wires up the hook, per shell. */
 export function hookEvalLine(shell: SupportedShell): string {
-  return shell === "fish"
-    ? "boot shell-hook fish | source"
-    : `eval "$(boot shell-hook ${shell})"`;
+  if (shell === "fish") return "boot shell-hook fish | source";
+  if (shell === "powershell") return "Invoke-Expression (& boot shell-hook powershell | Out-String)";
+  return `eval "$(boot shell-hook ${shell})"`;
 }
 
 /** Whether a shell rc file already sources boot's hook. */

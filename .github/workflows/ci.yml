@@ -28,3 +28,58 @@ jobs:
 
       - name: Test
         run: pnpm test:run
+
+  windows-binary:
+    # Build the Windows binary on a real Windows runner and confirm it launches,
+    # so every PR exercises the Windows distribution path (the rest of the suite
+    # runs on Linux).
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        # fuse-native is an optionalDependency, so a failed native build here is harmless.
+        run: bun install
+
+      - name: Build Windows binary
+        shell: bash
+        run: |
+          bun build src/index.ts \
+            --compile \
+            --target=bun-windows-x64 \
+            --outfile=boot-windows-x64.exe \
+            --external fuse-native \
+            --define __BOOT_VERSION__="\"$GITHUB_SHA\""
+
+      - name: Smoke test (boot --version)
+        shell: bash
+        run: |
+          OUT="$(./boot-windows-x64.exe --version)"
+          echo "boot --version → $OUT"
+          test "$OUT" = "$GITHUB_SHA" || { echo "version mismatch: got '$OUT', want '$GITHUB_SHA'"; exit 1; }
+
+      - name: Smoke test (daemon as a Scheduled Task)
+        shell: bash
+        run: |
+          # A workspace counts as "linked" once its .boot/map dir exists — enough
+          # to exercise registering/tearing down the Windows Scheduled Task.
+          mkdir -p ws/.boot/map
+
+          # `daemon install` runs `schtasks /Create` (a hard error if it fails), so
+          # a clean exit proves the task registered from our UTF-16 task XML. boot
+          # invokes schtasks itself, avoiding Git Bash's slash-arg munging.
+          ./boot-windows-x64.exe daemon install ws --interval 3600
+          if ! ls "$HOME"/.boot/services/boot-*.xml >/dev/null 2>&1; then
+            echo "expected a task XML under ~/.boot/services after install"; exit 1
+          fi
+
+          ./boot-windows-x64.exe daemon uninstall ws
+          if ls "$HOME"/.boot/services/boot-*.xml >/dev/null 2>&1; then
+            echo "task XML still present after uninstall"; exit 1
+          fi
+          echo "daemon install/uninstall on Windows OK"

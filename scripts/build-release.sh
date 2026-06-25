@@ -2,7 +2,7 @@
 #
 # Build standalone `boot` binaries for every supported platform.
 #
-# Output: dist/release/boot-<os>-<arch>  (linux/darwin × x64/arm64)
+# Output: dist/release/boot-<os>-<arch>  (linux/darwin × x64/arm64, plus windows-x64.exe)
 # Requires: Bun (https://bun.sh). macOS binaries are ad-hoc codesigned when this
 # runs on macOS. Cross-compiled targets are emitted but only the host platform's
 # binary can be smoke-tested locally — CI builds each on its native runner.
@@ -33,6 +33,7 @@ PLATFORMS=(
   "boot-linux-arm64:bun-linux-arm64"
   "boot-darwin-x64:bun-darwin-x64"
   "boot-darwin-arm64:bun-darwin-arm64"
+  "boot-windows-x64.exe:bun-windows-x64"
 )
 
 for entry in "${PLATFORMS[@]}"; do

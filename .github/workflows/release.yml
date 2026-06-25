@@ -29,6 +29,9 @@ jobs:
           - os: macos-latest
             target: bun-darwin-arm64
             artifact: boot-darwin-arm64
+          - os: windows-latest
+            target: bun-windows-x64
+            artifact: boot-windows-x64.exe
 
     runs-on: ${{ matrix.os }}
 
@@ -48,6 +51,8 @@ jobs:
       - name: Build binary
         # macOS: Bun can embed a truncated LC_CODE_SIGNATURE that the kernel rejects,
         # so skip Bun's signing and ad-hoc sign in the next step instead.
+        # Use bash everywhere (Git Bash ships on the Windows runner) so one script works.
+        shell: bash
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           if echo "${{ matrix.target }}" | grep -q darwin; then
@@ -67,6 +72,7 @@ jobs:
           codesign --verify --strict "${{ matrix.artifact }}"
 
       - name: Smoke test binary
+        shell: bash
         run: |
           chmod +x "${{ matrix.artifact }}"
           # Only run a binary that matches the runner's architecture.

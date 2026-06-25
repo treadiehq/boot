@@ -29,7 +29,7 @@ export function renderSetupHealth(health: SetupHealth): void {
   }
 
   if (!health.shell) {
-    row(DOT(), "Shell hook", colors.dim("shell not detected — `boot shell-hook <zsh|bash|fish>`"));
+    row(DOT(), "Shell hook", colors.dim("shell not detected — `boot shell-hook <zsh|bash|fish|powershell>`"));
   } else if (health.hookInstalled) {
     row(OK(), "Shell hook", colors.dim(`${health.rcPath} (${health.shell})`));
   } else {

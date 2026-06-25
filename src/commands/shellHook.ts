@@ -36,6 +36,21 @@ function _boot_autohydrate --on-variable PWD
     command boot enter "$PWD" --quiet >/dev/null 2>&1 &
 end
 `;
+    case "powershell":
+      return `# boot on-access hydration (PowerShell) — add to $PROFILE:  Invoke-Expression (& boot shell-hook powershell | Out-String)
+if (-not $global:__BootPromptHooked) {
+  $global:__BootPromptHooked = $true
+  $global:__BootLastPwd = $null
+  $global:__BootOriginalPrompt = $function:prompt
+  function global:prompt {
+    if ($global:__BootLastPwd -ne $PWD.Path) {
+      $global:__BootLastPwd = $PWD.Path
+      Start-Process -FilePath 'boot' -ArgumentList @('enter', $PWD.Path, '--quiet') -WindowStyle Hidden -ErrorAction SilentlyContinue | Out-Null
+    }
+    if ($global:__BootOriginalPrompt) { & $global:__BootOriginalPrompt } else { "PS $($PWD.Path)> " }
+  }
+}
+`;
   }
 }
 

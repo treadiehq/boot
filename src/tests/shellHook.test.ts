@@ -21,6 +21,14 @@ describe("renderShellHook", () => {
     expect(out).toContain("--on-variable PWD");
     expect(out).toContain('boot enter "$PWD" --quiet');
   });
+
+  it("emits a PowerShell prompt hook that calls `boot enter`", () => {
+    const out = renderShellHook("powershell");
+    expect(out).toContain("function global:prompt");
+    expect(out).toContain("'enter', $PWD.Path, '--quiet'");
+    // Guard prevents double-wrapping the prompt.
+    expect(out).toContain("if (-not $global:__BootPromptHooked)");
+  });
 });
 
 describe("detectShell", () => {
@@ -57,7 +65,13 @@ describe("shellHookCommand", () => {
     expect(String(logSpy.mock.calls[0][0])).toContain("_boot_autohydrate");
   });
 
+  it("prints the PowerShell snippet", () => {
+    shellHookCommand("powershell");
+    expect(logSpy).toHaveBeenCalledOnce();
+    expect(String(logSpy.mock.calls[0][0])).toContain("function global:prompt");
+  });
+
   it("throws on an unsupported shell", () => {
-    expect(() => shellHookCommand("powershell")).toThrow(/Unsupported shell/);
+    expect(() => shellHookCommand("tcsh")).toThrow(/Unsupported shell/);
   });
 });
