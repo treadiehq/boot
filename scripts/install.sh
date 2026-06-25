@@ -1,26 +1,20 @@
 #!/usr/bin/env bash
 #
-# boot installer — one line per machine.
+# boot installer — download a prebuilt binary and put it on your PATH.
 #
 #   curl -fsSL https://raw.githubusercontent.com/treadiehq/boot/main/scripts/install.sh | bash
 #
-# Or, from a local checkout:
-#
-#   bash scripts/install.sh
-#
 # Environment overrides:
-#   BOOT_REPO     git URL to clone when not run from a checkout
-#                 (default: https://github.com/treadiehq/boot.git)
-#   BOOT_REF      branch/tag/commit to install (default: main)
-#   BOOT_APP_DIR  where to keep the built app (default: ~/.boot/app)
-#   BOOT_BIN_DIR  where to symlink the `boot` binary (default: ~/.local/bin)
+#   BOOT_VERSION   release tag to install, e.g. v0.1.0 (default: latest)
+#   BOOT_BIN_DIR   where to install the `boot` binary
+#                  (default: /usr/local/bin if writable, else ~/.local/bin)
+#   BOOT_REPO      owner/repo to download releases from (default: treadiehq/boot)
 #
 set -euo pipefail
 
-BOOT_REPO="${BOOT_REPO:-https://github.com/treadiehq/boot.git}"
-BOOT_REF="${BOOT_REF:-main}"
-BOOT_APP_DIR="${BOOT_APP_DIR:-$HOME/.boot/app}"
-BOOT_BIN_DIR="${BOOT_BIN_DIR:-$HOME/.local/bin}"
+REPO="${BOOT_REPO:-treadiehq/boot}"
+VERSION="${BOOT_VERSION:-latest}"
+BIN_NAME="boot"
 
 if [ -t 1 ]; then
   bold=$(printf '\033[1m'); dim=$(printf '\033[2m'); green=$(printf '\033[32m')
@@ -31,66 +25,73 @@ fi
 say()  { printf '%s\n' "${dim}→${reset} $*"; }
 ok()   { printf '%s\n' "${green}✓${reset} $*"; }
 die()  { printf '%s\n' "${red}✗${reset} $*" >&2; exit 1; }
-
 need() { command -v "$1" >/dev/null 2>&1 || die "missing required tool: $1"; }
 
-# --- prerequisites -----------------------------------------------------------
-need git
-need node
-NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)"
-[ "$NODE_MAJOR" -ge 18 ] || die "Node.js >= 18 required (found $(node -v 2>/dev/null || echo none))."
+need curl
 
-# Prefer pnpm (the project's package manager) via corepack, then pnpm, then npm.
-if command -v pnpm >/dev/null 2>&1; then
-  PM="pnpm"
-elif command -v corepack >/dev/null 2>&1; then
-  corepack enable >/dev/null 2>&1 || true
-  PM="$(command -v pnpm >/dev/null 2>&1 && echo pnpm || echo npm)"
+# --- detect platform ---------------------------------------------------------
+OS="$(uname -s)"
+case "$OS" in
+  Linux)  OS="linux" ;;
+  Darwin) OS="darwin" ;;
+  *) die "unsupported OS: $OS (boot supports Linux and macOS)" ;;
+esac
+
+ARCH="$(uname -m)"
+case "$ARCH" in
+  x86_64|amd64)  ARCH="x64" ;;
+  arm64|aarch64) ARCH="arm64" ;;
+  *) die "unsupported architecture: $ARCH (boot supports x64 and arm64)" ;;
+esac
+
+ASSET="${BIN_NAME}-${OS}-${ARCH}"
+if [ "$VERSION" = "latest" ]; then
+  URL="https://github.com/${REPO}/releases/latest/download/${ASSET}"
 else
-  PM="npm"
+  URL="https://github.com/${REPO}/releases/download/${VERSION}/${ASSET}"
 fi
 
-# --- locate the source: local checkout, or clone -----------------------------
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" >/dev/null 2>&1 && pwd || true)"
-SRC=""
-if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/../package.json" ] && \
-   grep -q '"name": "boot"' "$SCRIPT_DIR/../package.json" 2>/dev/null; then
-  SRC="$(cd "$SCRIPT_DIR/.." && pwd)"
-  say "installing from local checkout: ${bold}$SRC${reset}"
+# --- pick an install dir (no sudo) -------------------------------------------
+if [ -n "${BOOT_BIN_DIR:-}" ]; then
+  BIN_DIR="$BOOT_BIN_DIR"
+elif [ -d /usr/local/bin ] && [ -w /usr/local/bin ]; then
+  BIN_DIR="/usr/local/bin"
 else
-  if [ -d "$BOOT_APP_DIR/.git" ]; then
-    say "updating existing install in $BOOT_APP_DIR"
-    git -C "$BOOT_APP_DIR" fetch --depth 1 origin "$BOOT_REF"
-    git -C "$BOOT_APP_DIR" checkout -q FETCH_HEAD
-  else
-    say "cloning ${bold}$BOOT_REPO${reset} ($BOOT_REF) → $BOOT_APP_DIR"
-    mkdir -p "$(dirname "$BOOT_APP_DIR")"
-    git clone --depth 1 --branch "$BOOT_REF" "$BOOT_REPO" "$BOOT_APP_DIR"
-  fi
-  SRC="$BOOT_APP_DIR"
+  BIN_DIR="$HOME/.local/bin"
+fi
+mkdir -p "$BIN_DIR"
+
+# --- download + install ------------------------------------------------------
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
+
+say "downloading ${bold}${ASSET}${reset} (${VERSION}) for ${OS}-${ARCH}"
+if ! curl -fSL --progress-bar "$URL" -o "$TMP/$BIN_NAME"; then
+  die "download failed: $URL
+  - no release asset for your platform yet, or
+  - the version tag does not exist (check: https://github.com/${REPO}/releases)"
 fi
 
-# --- build -------------------------------------------------------------------
-say "installing dependencies with $PM"
-( cd "$SRC" && $PM install )
-say "building"
-( cd "$SRC" && $PM run build )
+chmod +x "$TMP/$BIN_NAME"
+mv -f "$TMP/$BIN_NAME" "$BIN_DIR/$BIN_NAME"
 
-ENTRY="$SRC/dist/index.js"
-[ -f "$ENTRY" ] || die "build did not produce $ENTRY"
-chmod +x "$ENTRY" 2>/dev/null || true
-
-# --- link onto PATH ----------------------------------------------------------
-mkdir -p "$BOOT_BIN_DIR"
-ln -sf "$ENTRY" "$BOOT_BIN_DIR/boot"
-ok "linked ${bold}$BOOT_BIN_DIR/boot${reset} → $ENTRY"
-
-if ! printf '%s' ":$PATH:" | grep -q ":$BOOT_BIN_DIR:"; then
-  printf '\n'
-  say "add $BOOT_BIN_DIR to your PATH, e.g.:"
-  printf '    export PATH="%s:$PATH"\n' "$BOOT_BIN_DIR"
+if ! "$BIN_DIR/$BIN_NAME" --version >/dev/null 2>&1; then
+  die "the installed binary failed to run ($BIN_DIR/$BIN_NAME)"
 fi
+ok "installed ${bold}boot $("$BIN_DIR/$BIN_NAME" --version)${reset} → $BIN_DIR/$BIN_NAME"
+
+# --- PATH hint ---------------------------------------------------------------
+case ":$PATH:" in
+  *":$BIN_DIR:"*) ;;
+  *)
+    printf '\n'
+    say "add ${bold}$BIN_DIR${reset} to your PATH, e.g.:"
+    printf '    echo '\''export PATH="%s:$PATH"'\'' >> ~/.zshrc && source ~/.zshrc\n' "$BIN_DIR"
+    ;;
+esac
 
 printf '\n'
 ok "boot installed. Get started with:"
-printf '    boot setup <map-remote> ~/code\n'
+printf '    %sboot setup <map-remote> ~/code%s\n' "$bold" "$reset"
+printf '\n'
+printf '%sUpdate later with:%s  boot update\n' "$dim" "$reset"

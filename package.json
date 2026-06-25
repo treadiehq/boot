@@ -1,7 +1,7 @@
 {
   "name": "boot",
   "version": "0.0.1",
-  "description": "boot — a portable developer workspace map with lazy hydration. Dropbox for ~/code, structure only.",
+  "description": "Dropbox for ~/code — sync your workspace structure across machines, hydrate repos on access, and never build on a stale base.",
   "type": "module",
   "bin": {
     "boot": "./dist/index.js"
@@ -15,7 +15,8 @@
     "test": "vitest",
     "test:run": "vitest run",
     "lint": "tsc --noEmit",
-    "qa": "bash scripts/qa.sh"
+    "qa": "bash scripts/qa.sh",
+    "build:binary": "bash scripts/build-release.sh"
   },
   "keywords": [
     "cli",

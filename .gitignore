@@ -5,3 +5,5 @@ dist/
 
 # Local scan artifacts
 boot-workspace.json
+
+.cursor/

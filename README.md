@@ -1,6 +1,6 @@
-# boot
+# Boot
 
-**Dropbox for `~/code` — it syncs the _map_ of your workspace, not the files.**
+**Dropbox for `~/[code]` — it syncs the _map_ of your workspace, not the files.**
 
 You have a folder full of git repos. boot remembers its shape, which repos live
 where, and recreates it on any other machine. Repos arrive as tiny
@@ -16,7 +16,7 @@ Two promises, really:
   fast-forwards clean repos, so you stop wasting time on "wait, why did it build
   the old `main`?"
 - **A fresh box or cloud agent has your exact workspace in seconds.** One command
-  and your whole layout is there — repos hydrate the moment you touch them.
+  and your whole layout is there, repos hydrate the moment you touch them.
 
 > boot doesn't replace Git or live-sync your edits. It syncs structure and
 > secrets, not a real-time copy of your files.
@@ -27,7 +27,8 @@ Two promises, really:
 curl -fsSL https://raw.githubusercontent.com/treadiehq/boot/main/scripts/install.sh | bash
 ```
 
-Needs Node 18+ and Git.
+Installs a standalone binary (Linux/macOS, x64/arm64) — just needs `curl`. Git
+is required for boot's repo syncing. Update anytime with `boot update`.
 
 ## Use it
 
@@ -51,18 +52,29 @@ placeholders that hydrate when you touch them. It's safe to re-run anytime.
 | `boot hydrate <path>` | Turn a placeholder into a real clone. |
 | `boot env key share` / `receive` | Move your encrypted secrets to a new machine with a passphrase. |
 | `boot agent <remote> [path]` | One-shot bootstrap for CI / cloud agents. |
+| `boot update` | Update boot itself to the latest version. |
 | `boot doctor --system` | Check how a machine is wired up (link, key, hook, daemon, FUSE). |
 
 Env-var sync, the Dropbox-folder transport, FUSE mounts, and the full command
 reference live in **[docs/detailed.md](docs/detailed.md)**.
 
-## Develop
+## Dev
 
 ```bash
-pnpm dev <cmd>   # run from source
-pnpm build       # bundle
-pnpm test        # tests
+pnpm dev <cmd>      # run from source
+pnpm build          # bundle (dist/index.js, needs Node to run)
+pnpm test           # tests
+pnpm build:binary   # standalone binaries for all platforms (needs Bun) → dist/release/
 ```
+
+## Not yet
+
+- a native **macOS File Provider** extension so on-read hydration needs no macFUSE
+  install (a signed Swift app extension, out of scope for a pure-TS CLI);
+- **continuous file-content sync** of *uncommitted* work between machines (boot
+  deliberately syncs the structural map, not a live file replica, a real-time
+  replication backend is a separate product surface).
+
 
 ## License
 

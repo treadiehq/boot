@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { Command } from "commander";
 import {
   daemonStart,
@@ -34,9 +35,32 @@ import { daemonInstall, daemonUninstall } from "./commands/service";
 import { setupCommand, type SetupOptions } from "./commands/setup";
 import { shellHookCommand } from "./commands/shellHook";
 import { statusCommand } from "./commands/status";
+import { updateCommand, type UpdateOptions } from "./commands/update";
 import { watchCommand } from "./commands/watch";
 
 export const DEFAULT_MANIFEST_NAME = "boot-workspace.json";
+
+/**
+ * Resolve the CLI version. Standalone release binaries get `__BOOT_VERSION__`
+ * baked in at build time (there is no package.json on disk next to a compiled
+ * binary); source and dev builds fall back to reading it from package.json.
+ */
+declare const __BOOT_VERSION__: string | undefined;
+function resolveVersion(): string {
+  if (typeof __BOOT_VERSION__ === "string" && __BOOT_VERSION__.length > 0) {
+    return __BOOT_VERSION__;
+  }
+  try {
+    const { version } = JSON.parse(
+      readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+    ) as { version: string };
+    return version;
+  } catch {
+    return "0.0.0";
+  }
+}
+
+const VERSION = resolveVersion();
 
 export function buildProgram(): Command {
   const program = new Command();
@@ -44,9 +68,9 @@ export function buildProgram(): Command {
   program
     .name("boot")
     .description(
-      "boot — a portable map of your developer workspace. Scan ~/code on one machine, restore it on another.",
+      "boot — Dropbox for ~/code. Sync your workspace structure across machines and hydrate repos on access.",
     )
-    .version("0.2.0");
+    .version(VERSION);
 
   program.commandsGroup("Getting started:");
 
@@ -75,6 +99,12 @@ export function buildProgram(): Command {
     .argument("<workspacePath>", "path to the developer workspace to initialise")
     .option("-f, --force", "overwrite existing files", false)
     .action((workspacePath: string, options: InitOptions) => initCommand(workspacePath, options));
+
+  program
+    .command("update")
+    .description("update boot itself to the latest version")
+    .option("--ref <ref>", "release tag (binary install) or git ref (source install) to update to")
+    .action((options: UpdateOptions) => updateCommand(options));
 
   program.commandsGroup("Portable snapshot (offline, no remote):");
 

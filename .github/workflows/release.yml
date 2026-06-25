@@ -1,0 +1,117 @@
+name: Release
+
+# Push a semver tag to cut a release:
+#   npm version patch   # bumps package.json + creates the vX.Y.Z tag
+#   git push --follow-tags
+# This builds a standalone `boot` binary for each platform and publishes them
+# as assets on a GitHub Release. The installer downloads from /releases/latest.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: bun-linux-x64
+            artifact: boot-linux-x64
+          - os: ubuntu-24.04-arm
+            target: bun-linux-arm64
+            artifact: boot-linux-arm64
+          - os: macos-latest
+            target: bun-darwin-x64
+            artifact: boot-darwin-x64
+          - os: macos-latest
+            target: bun-darwin-arm64
+            artifact: boot-darwin-arm64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        # fuse-native is an optional native addon; --compile keeps it external, so
+        # a failure to build it here is harmless.
+        run: bun install
+
+      - name: Build binary
+        # macOS: Bun can embed a truncated LC_CODE_SIGNATURE that the kernel rejects,
+        # so skip Bun's signing and ad-hoc sign in the next step instead.
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          if echo "${{ matrix.target }}" | grep -q darwin; then
+            export BUN_NO_CODESIGN_MACHO_BINARY=1
+          fi
+          bun build src/index.ts \
+            --compile \
+            --target=${{ matrix.target }} \
+            --outfile=${{ matrix.artifact }} \
+            --external fuse-native \
+            --define __BOOT_VERSION__="\"$VERSION\""
+
+      - name: Ad-hoc sign macOS binary
+        if: contains(matrix.target, 'darwin')
+        run: |
+          codesign --force --sign - "${{ matrix.artifact }}"
+          codesign --verify --strict "${{ matrix.artifact }}"
+
+      - name: Smoke test binary
+        run: |
+          chmod +x "${{ matrix.artifact }}"
+          # Only run a binary that matches the runner's architecture.
+          M="$(uname -m)"
+          case "${{ matrix.target }}" in
+            *x64)   WANT="x86_64|amd64" ;;
+            *arm64) WANT="arm64|aarch64" ;;
+          esac
+          if echo "$M" | grep -Eq "$WANT"; then
+            OUT="$(./${{ matrix.artifact }} --version)"
+            echo "boot --version → $OUT"
+            test "$OUT" = "${GITHUB_REF_NAME#v}" || { echo "version mismatch"; exit 1; }
+          else
+            file "${{ matrix.artifact }}"
+            echo "Cross-compiled for $M host; format checked only."
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Collect release files
+        run: |
+          mkdir -p release
+          find artifacts -type f -exec mv {} release/ \;
+          (cd release && for f in *; do sha256sum "$f" >> SHA256SUMS; done)
+          ls -la release/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
