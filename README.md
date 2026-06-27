@@ -72,6 +72,7 @@ reference live in **[docs/detailed.md](docs/detailed.md)**.
 pnpm dev <cmd>      # run from source
 pnpm build          # bundle (dist/index.js, needs Node to run)
 pnpm test           # tests
+pnpm demo           # narrated, offline two-machine walkthrough (great for showing off)
 pnpm build:binary   # standalone binaries for all platforms (needs Bun) → dist/release/
 ```
 

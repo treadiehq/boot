@@ -16,6 +16,7 @@
     "test:run": "vitest run",
     "lint": "tsc --noEmit",
     "qa": "bash scripts/qa.sh",
+    "demo": "bash scripts/demo.sh",
     "build:binary": "bash scripts/build-release.sh"
   },
   "keywords": [

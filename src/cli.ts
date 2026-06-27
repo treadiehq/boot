@@ -37,6 +37,7 @@ import { shellHookCommand } from "./commands/shellHook";
 import { statusCommand } from "./commands/status";
 import { updateCommand, type UpdateOptions } from "./commands/update";
 import { watchCommand } from "./commands/watch";
+import { logger } from "./ui/logger";
 
 export const DEFAULT_MANIFEST_NAME = "boot-workspace.json";
 
@@ -70,9 +71,14 @@ export function buildProgram(): Command {
     .description(
       "boot — Dropbox for ~/code. Sync your workspace structure across machines and hydrate repos on access.",
     )
-    .version(VERSION);
+    .version(VERSION, "-v, --version", "print boot's version and exit");
 
   program.commandsGroup("Getting started:");
+
+  program
+    .command("version")
+    .description("print boot's version and exit")
+    .action(() => logger.info(VERSION));
 
   program
     .command("setup")
