@@ -116,6 +116,12 @@ git push --follow-tags
 `boot setup` is the front door: it runs the whole wiring sequence and prints a
 health summary, so a fresh machine goes from nothing to fully-synced in one step.
 
+> **Before the very first machine:** create an empty private git repo to hold the
+> map (any host; a name like `code-map` is fine). boot *clones* this remote — it
+> never creates it — so it must exist first. Leave it empty; the first sync seeds
+> it. With the `--folder` transport you point at an already-synced folder instead
+> and skip the git repo entirely.
+
 ```bash
 boot setup git@github.com:me/my-code-map.git ~/code   # interactive
 boot setup --folder ~/Dropbox/boot-map ~/code         # folder transport
@@ -226,6 +232,16 @@ target/
 - Ignored directories are never descended into during a scan.
 - The snapshot file records every ignore file that was applied (`config.ignoreFiles`).
 
+### How deep the map goes
+
+There's no limit on nesting you'll hit in practice: boot maps arbitrarily nested
+subfolders, descending up to **12 directory levels** below the workspace root (a
+safety bound so a pathological tree can't recurse forever). Every git repo (and
+every placeholder) is treated as a **leaf** — boot records it and stops, never
+recursing *inside* a repo, so a repo nested within another repo isn't mapped as
+its own entry. Ignored folders (`node_modules`, `dist`, …) are skipped entirely,
+and symlinks aren't followed.
+
 ## Workspace config — `boot.yaml`
 
 An optional, zod-validated config file at the workspace root:
@@ -285,10 +301,14 @@ boot link git@github.com:me/my-code-map.git ~/code
 # Any other machine (or a cloud agent): the structure appears as placeholders.
 boot link git@github.com:me/my-code-map.git ~/code
 
-# Day to day:
+# Day to day (optional — the daemon does both of these for you every 60s):
 boot push ~/code     # publish new/changed repos to the map
 boot pull ~/code     # receive structure added on other machines
 ```
+
+With the background daemon installed (see below), you normally never run `push`
+or `pull` by hand — they're on-demand escape hatches for when you want an
+immediate sync instead of waiting for the next tick.
 
 ### Choosing a transport
 

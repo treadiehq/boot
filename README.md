@@ -40,23 +40,32 @@ required for boot's repo syncing. Update anytime with `boot update`.
 
 ## Use it
 
-One command sets up a machine. It links the workspace, creates a secret key,
-installs the shell hook and background daemon, and prints a health check:
+**Once, ever:** create an empty private git repo to hold the map. boot *clones*
+this remote, it won't create it for you. So make one first on any host and
+leave it empty (your first sync seeds it). A name like `code-map` works well.
+
+Then one command sets up each machine. It links the workspace, creates a secret
+key, installs the shell hook and background daemon, and prints a health check:
 
 ```bash
-boot setup git@github.com:me/my-code-map.git ~/code
+boot setup git@github.com:me/code-map.git ~/code
 ```
 
 Run the same command on your next machine and your whole layout shows up as
 placeholders that hydrate when you touch them. It's safe to re-run anytime.
+
+You don't have to remember to sync. The background daemon that `setup` installs
+pulls **and** pushes the map for you (every 60s by default), so a repo you add on
+one machine shows up on the others on its own. `boot push` / `boot pull` are just
+on-demand escape hatches. Most days you never run them.
 
 ## Handy commands
 
 | Command | What it does |
 | --- | --- |
 | `boot setup <remote> [path]` | Set up (or update) a machine in one shot. |
-| `boot push` | Publish this machine's layout to the shared map. |
-| `boot pull` | Pull the latest layout; add `--dry-run` to preview first. |
+| `boot push` | Manually publish this machine's layout (the daemon already does this). |
+| `boot pull` | Manually pull the latest layout (the daemon already does this); `--dry-run` to preview. |
 | `boot hydrate <path>` | Turn a placeholder into a real clone. |
 | `boot env key share` / `receive` | Move your encrypted secrets to a new machine with a passphrase. |
 | `boot agent <remote> [path]` | One-shot bootstrap for CI / cloud agents. |
