@@ -66,6 +66,7 @@ on-demand escape hatches. Most days you never run them.
 | `boot setup <remote> [path]` | Set up (or update) a machine in one shot. |
 | `boot push` | Manually publish this machine's layout (the daemon already does this). |
 | `boot pull` | Manually pull the latest layout (the daemon already does this); `--dry-run` to preview. |
+| `boot cd <name>` | Fuzzy-jump to any repo in your map, hydrating it on the way (use the `bcd` shell function). |
 | `boot hydrate <path>` | Turn a placeholder into a real clone. |
 | `boot env key share` / `receive` | Move your encrypted secrets to a new machine with a passphrase. |
 | `boot agent <remote> [path]` | One-shot bootstrap for CI / cloud agents. |

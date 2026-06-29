@@ -7,6 +7,7 @@ import {
   type DaemonStartOptions,
 } from "./commands/daemon";
 import { agentCommand, type AgentOptions } from "./commands/agent";
+import { cdCommand, type CdOptions } from "./commands/cd";
 import { doctorCommand, type DoctorOptions } from "./commands/doctor";
 import { enterCommand } from "./commands/enter";
 import {
@@ -157,8 +158,17 @@ export function buildProgram(): Command {
     );
 
   program
+    .command("cd")
+    .description("resolve a repo in your map (hydrating it), printing its path — pair with the `bcd` shell function")
+    .argument("[query]", "fuzzy repo name or path; omit to browse interactively")
+    .option("-C, --cwd <path>", "workspace directory (or anywhere inside it)", ".")
+    .option("--print", "print only the resolved path to stdout (used by `bcd`)", false)
+    .option("--json", "print the match as a JSON line to stdout", false)
+    .action((query: string | undefined, options: CdOptions) => cdCommand(query ?? "", options));
+
+  program
     .command("shell-hook")
-    .description("print a shell snippet that hydrates placeholders when you cd into them")
+    .description("print a shell snippet that hydrates placeholders when you cd into them (and defines `bcd`)")
     .argument("[shell]", "zsh, bash, fish, or powershell (auto-detected if omitted)")
     .action((shell?: string) => shellHookCommand(shell));
 

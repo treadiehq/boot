@@ -186,7 +186,8 @@ From a clone during development the same thing looks like
 | `import <manifestPath> <targetPath>` | *(snapshot, lower-level; alias `restore`)* Recreate folders and clone repos from a snapshot file. `--lazy` writes placeholders instead of cloning. Never overwrites an existing repo. |
 | `hydrate <repoPath>` | Clone a placeholder repo into its folder and mark it hydrated. |
 | `enter [targetPath]` | Hydrate the nearest placeholder at/above a path, the on-access trigger. `-q, --quiet` for the shell hook. |
-| `shell-hook [shell]` | Print a `zsh`/`bash`/`fish`/`powershell` snippet that runs `enter` on every `cd`, so navigating into a placeholder hydrates it. |
+| `cd [query]` | Fuzzy-resolve a repo in the map and print its path, hydrating it first. Omit the query to browse. `-C <path>`, `--print` (used by the `bcd` shell function), `--json`. |
+| `shell-hook [shell]` | Print a `zsh`/`bash`/`fish`/`powershell` snippet that runs `enter` on every `cd` and defines the `bcd` quick-jump. |
 | `watch [workspacePath]` | Watch a workspace and hydrate placeholders the moment a tool writes into one. `--debounce <ms>`. |
 | `mount <workspacePath> <mountpoint>` | Mount the workspace as a read-write virtual FS that hydrates a repo on first **read** (`cat`, editor open, grep). Needs FUSE (`fuse-native` + macFUSE/libfuse). `--read-only`, `--debug`. |
 | `unmount <mountpoint>` | Force-unmount a workspace mounted with `mount`. |
@@ -493,6 +494,34 @@ kernel module.
 > Pass `--read-only` to make reads still hydrate but reject writes with `EROFS`,
 > handy for inspection or untrusted agents. A native macOS **File Provider**
 > extension (no macFUSE install) is the remaining nicety.
+
+## Jump to any repo — `boot cd` and `bcd`
+
+The triggers above are *passive* — they hydrate the repo you happen to navigate
+into. `boot cd` is the *active* counterpart: name a repo and jump straight to it,
+no matter where it lives in the tree, hydrating it on the way. Because the target
+is resolved from the **map**, you can jump to a repo that's still just a
+placeholder — even one you've never cloned on this machine — and it materialises
+on arrival.
+
+A child process can't change its parent shell's directory, so `boot cd` *prints*
+the resolved path and a tiny shell function does the `cd`. The function `bcd` is
+bundled into the shell hook (`boot shell-hook`), so once that's installed:
+
+```bash
+bcd web            # fuzzy-match "web" across your map, hydrate it, and cd in
+bcd apps/api       # path fragments work too
+boot cd            # no query → interactive picker of every repo in the map
+```
+
+- Matching is a boundary-aware fuzzy match over each repo's **name** and
+  **relative path** (a name hit outranks an incidental path hit). With a query
+  it jumps to the best match; with none it offers a picker on a TTY.
+- `boot cd --print <query>` writes **only** the resolved path to stdout (logs go
+  to stderr) — that's the contract `bcd` consumes. `--json` emits
+  `{ path, name, relativePath, hydrated }` for scripts.
+- If the repo isn't on this machine yet, boot tells you to `boot pull` first
+  rather than guessing.
 
 ## Environment variables — `boot env`
 

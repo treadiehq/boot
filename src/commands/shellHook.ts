@@ -6,9 +6,14 @@ export { detectShell, type SupportedShell };
 /**
  * Render the shell snippet that hydrates a placeholder whenever you `cd` into
  * it. Each runs `boot enter "$PWD"` in the background on directory change, so
- * navigating into part of the workspace pulls it down "in the moment".
+ * navigating into part of the workspace pulls it down "in the moment". It also
+ * defines `bcd`, a quick-jump that `cd`s to (and hydrates) any repo in the map.
  */
 export function renderShellHook(shell: SupportedShell): string {
+  return `${renderAutohydrateHook(shell)}\n${renderJumpFunction(shell)}`;
+}
+
+function renderAutohydrateHook(shell: SupportedShell): string {
   switch (shell) {
     case "zsh":
       return `# boot on-access hydration (zsh) — add to ~/.zshrc:  eval "$(boot shell-hook zsh)"
@@ -49,6 +54,39 @@ if (-not $global:__BootPromptHooked) {
     }
     if ($global:__BootOriginalPrompt) { & $global:__BootOriginalPrompt } else { "PS $($PWD.Path)> " }
   }
+}
+`;
+  }
+}
+
+/**
+ * Quick-jump: `bcd <name>` resolves a repo from your map, hydrates it if it's
+ * still a placeholder, and `cd`s you into it. `boot cd` prints the path; the
+ * function is what actually changes the directory (a child process can't).
+ */
+function renderJumpFunction(shell: SupportedShell): string {
+  switch (shell) {
+    case "zsh":
+    case "bash":
+      return `# boot quick-jump: \`bcd <name>\` cd's to (and hydrates) a repo in your map
+bcd() {
+  local _dir
+  _dir="$(command boot cd --print "$@")" || return
+  [ -n "$_dir" ] && cd "$_dir"
+}
+`;
+    case "fish":
+      return `# boot quick-jump: \`bcd <name>\` cd's to (and hydrates) a repo in your map
+function bcd --description 'boot quick-jump to a repo'
+    set -l _dir (command boot cd --print $argv); or return
+    test -n "$_dir"; and cd $_dir
+end
+`;
+    case "powershell":
+      return `# boot quick-jump: \`bcd <name>\` cd's to (and hydrates) a repo in your map
+function bcd {
+  $dir = & boot cd --print @args
+  if ($LASTEXITCODE -eq 0 -and $dir) { Set-Location $dir }
 }
 `;
   }
