@@ -15,6 +15,7 @@ function repo(overrides: Partial<DoctorRepo> = {}): DoctorRepo {
     detectedFiles: ["package.json", "pnpm-lock.yaml"],
     packageManager: "pnpm",
     presentGeneratedDirs: [],
+    aheadBehind: { ahead: 0, behind: 0 },
     ...overrides,
   };
 }
@@ -61,6 +62,24 @@ describe("runDoctorChecks", () => {
     expect(report.placeholdersChecked).toBe(2);
     expect(report.reposChecked).toBe(0);
     expect(report.warnings).toContain("experiments/receipts is a placeholder with no remote URL");
+  });
+
+  it("flags repos that diverged from their upstream and counts them", () => {
+    const report = runDoctorChecks({
+      ...base,
+      repos: [
+        repo({ name: "forked", aheadBehind: { ahead: 2, behind: 5 } }),
+        repo({ name: "just-ahead", aheadBehind: { ahead: 3, behind: 0 } }),
+        repo({ name: "just-behind", aheadBehind: { ahead: 0, behind: 4 } }),
+        repo({ name: "no-upstream-repo", remoteUrl: null, aheadBehind: null }),
+      ],
+    });
+    expect(report.divergedCount).toBe(1);
+    expect(report.warnings).toContain(
+      "forked has diverged from its upstream (2 ahead, 5 behind) — merge or rebase to reconcile",
+    );
+    expect(report.warnings.some((w) => w.includes("just-ahead has diverged"))).toBe(false);
+    expect(report.warnings.some((w) => w.includes("just-behind has diverged"))).toBe(false);
   });
 
   it("flags stale repos based on staleAfterDays", () => {

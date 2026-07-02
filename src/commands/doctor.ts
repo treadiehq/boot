@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { ensureGitAvailable, getLastCommitDate } from "../core/git";
+import { ensureGitAvailable, getLastCommitDate, gitAheadBehind } from "../core/git";
 import { runDoctorChecks, SUSPICIOUS_GENERATED_DIRS, type DoctorRepo } from "../core/doctor";
 import { collectHealth } from "../core/health";
 import { scanWorkspace } from "../core/scanner";
@@ -30,12 +30,19 @@ export async function doctorCommand(
 
   const result = await scanWorkspace(workspacePath);
 
-  // Enrich each repo with the extra data the checks need (commit dates +
-  // generated folders). Placeholders skip git/fs lookups.
+  // Enrich each repo with the extra data the checks need (commit dates,
+  // upstream position + generated folders). Placeholders skip git/fs lookups.
+  // Ahead/behind reads already-fetched refs (no network) — the daemon keeps
+  // them current, and doctor should stay fast and offline-safe.
   const repos: DoctorRepo[] = await Promise.all(
     result.repos.map(async (repo) => {
       const isPlaceholder = repo.hydrate.status === "placeholder";
-      const lastCommitDate = isPlaceholder ? null : await getLastCommitDate(repo.absolutePath);
+      const [lastCommitDate, aheadBehind] = isPlaceholder
+        ? [null, null]
+        : await Promise.all([
+            getLastCommitDate(repo.absolutePath),
+            gitAheadBehind(repo.absolutePath),
+          ]);
       return {
         name: repo.name,
         relativePath: repo.relativePath,
@@ -48,6 +55,7 @@ export async function doctorCommand(
         detectedFiles: repo.detectedFiles,
         packageManager: repo.packageManager,
         presentGeneratedDirs: isPlaceholder ? [] : presentGeneratedDirs(repo.absolutePath),
+        aheadBehind,
       };
     }),
   );
@@ -74,5 +82,6 @@ export async function doctorCommand(
   logger.info(colors.bold("Summary:"));
   logger.info(`Repos checked: ${report.reposChecked}`);
   logger.info(`Placeholders checked: ${report.placeholdersChecked}`);
+  logger.info(`Diverged from upstream: ${report.divergedCount}`);
   logger.info(`Warnings: ${report.warnings.length}`);
 }

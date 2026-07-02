@@ -1,3 +1,4 @@
+import type { AheadBehind } from "./git";
 import { IGNORE_FILE_NAME } from "./ignore";
 import type { PackageManager, ProjectType } from "./projectDetect";
 
@@ -24,6 +25,8 @@ export interface DoctorRepo {
   packageManager: PackageManager | null;
   /** Suspicious generated folders present at the repo top level. */
   presentGeneratedDirs: string[];
+  /** Position relative to the upstream tracking ref; null when there is none. */
+  aheadBehind: AheadBehind | null;
 }
 
 export interface DoctorInput {
@@ -39,6 +42,8 @@ export interface DoctorReport {
   warnings: string[];
   reposChecked: number;
   placeholdersChecked: number;
+  /** Repos whose branch has moved both ahead of and behind its upstream. */
+  divergedCount: number;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -52,6 +57,7 @@ export function runDoctorChecks(input: DoctorInput): DoctorReport {
 
   let reposChecked = 0;
   let placeholdersChecked = 0;
+  let divergedCount = 0;
 
   if (!input.hasWorkspaceIgnoreFile) {
     warnings.push(`workspace has no ${IGNORE_FILE_NAME}`);
@@ -77,6 +83,14 @@ export function runDoctorChecks(input: DoctorInput): DoctorReport {
     if (repo.currentBranch && !branches.has(repo.currentBranch)) {
       warnings.push(`${repo.name} is on branch ${repo.currentBranch} instead of ${branchLabel}`);
     }
+    // Ahead *and* behind: the daemon can't fast-forward this repo, so it will
+    // quietly go stale until the user merges or rebases. Surface it.
+    if (repo.aheadBehind && repo.aheadBehind.ahead > 0 && repo.aheadBehind.behind > 0) {
+      divergedCount += 1;
+      warnings.push(
+        `${repo.name} has diverged from its upstream (${repo.aheadBehind.ahead} ahead, ${repo.aheadBehind.behind} behind) — merge or rebase to reconcile`,
+      );
+    }
     if (repo.lastCommitDate) {
       const ageDays = Math.floor((now.getTime() - repo.lastCommitDate.getTime()) / DAY_MS);
       if (ageDays > input.staleAfterDays) {
@@ -97,5 +111,5 @@ export function runDoctorChecks(input: DoctorInput): DoctorReport {
     }
   }
 
-  return { warnings, reposChecked, placeholdersChecked };
+  return { warnings, reposChecked, placeholdersChecked, divergedCount };
 }
