@@ -40,9 +40,10 @@ required for boot's repo syncing. Update anytime with `boot update`.
 
 ## Use it
 
-**Once, ever:** create an empty private git repo to hold the map. boot *clones*
-this remote, it won't create it for you. So make one first on any host and
-leave it empty (your first sync seeds it). A name like `code-map` works well.
+You need a private git repo to hold the map (a name like `code-map` works
+well). If it doesn't exist yet and you have the [GitHub CLI](https://cli.github.com)
+installed, boot offers to create it for you during setup. Otherwise create an
+empty private repo first on any host — your first sync seeds it.
 
 Then one command sets up each machine. It links the workspace, creates a secret
 key, installs the shell hook and background daemon, and prints a health check:

@@ -111,7 +111,7 @@ export async function setupCommand(
           "  boot setup --folder <dir> [path]",
       );
     }
-    await linkCommand(remote, root, { eager: options.eager, folder: options.folder });
+    await linkCommand(remote, root, { eager: options.eager, folder: options.folder, yes: options.yes });
   }
   logger.info();
 

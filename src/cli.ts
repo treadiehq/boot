@@ -222,6 +222,7 @@ export function buildProgram(): Command {
     .argument("[workspacePath]", "workspace directory to link", ".")
     .option("--eager", "clone repos instead of writing placeholders", false)
     .option("--folder", "treat <remote> as an already-synced folder (Dropbox/Drive/…), not a git URL", false)
+    .option("-y, --yes", "accept prompts (e.g. create a missing map remote via gh)", false)
     .action((remote: string, workspacePath: string, options: LinkOptions) =>
       linkCommand(remote, workspacePath, options),
     );

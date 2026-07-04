@@ -116,11 +116,13 @@ git push --follow-tags
 `boot setup` is the front door: it runs the whole wiring sequence and prints a
 health summary, so a fresh machine goes from nothing to fully-synced in one step.
 
-> **Before the very first machine:** create an empty private git repo to hold the
-> map (any host; a name like `code-map` is fine). boot *clones* this remote — it
-> never creates it — so it must exist first. Leave it empty; the first sync seeds
-> it. With the `--folder` transport you point at an already-synced folder instead
-> and skip the git repo entirely.
+> **Before the very first machine:** you need a private git repo to hold the map
+> (any host; a name like `code-map` is fine). If the remote doesn't exist yet and
+> it's a GitHub URL with the [GitHub CLI](https://cli.github.com) on PATH, setup
+> offers to create it as a private repo for you (`--yes` accepts non-interactively).
+> On other hosts, or without `gh`, create it empty first — the first sync seeds it.
+> With the `--folder` transport you point at an already-synced folder instead and
+> skip the git repo entirely.
 
 ```bash
 boot setup git@github.com:me/my-code-map.git ~/code   # interactive
@@ -199,7 +201,7 @@ From a clone during development the same thing looks like
 | `env key export\|import` | Lower-level key transfer. `export` copies to the clipboard by default (`--file`, `--stdout`); `import` reads an arg, `--file`, or stdin. |
 | `status <workspacePath>` | Show hydrated repos, placeholders, dirty repos, and other folders. |
 | `doctor <workspacePath>` | Print warnings (dirty repos, no remote, off-main, placeholders, stale, missing lockfiles, missing ignore file, generated folders). `--system` instead checks boot's own wiring (link, secret key, shell hook, daemon/service, FUSE). |
-| `link <remote> [workspacePath]` | Connect a workspace to a shared **map**, publish what's here, and recreate everything else as placeholders. `--eager` clones instead. `--folder` treats `<remote>` as an already-synced folder (Dropbox/Drive/…) instead of a git URL. |
+| `link <remote> [workspacePath]` | Connect a workspace to a shared **map**, publish what's here, and recreate everything else as placeholders. `--eager` clones instead. `--folder` treats `<remote>` as an already-synced folder (Dropbox/Drive/…) instead of a git URL. `-y/--yes` accepts prompts, e.g. creating a missing GitHub map remote via `gh`. |
 | `push [workspacePath]` | Scan this workspace and publish its structure to the shared map. |
 | `pull [workspacePath]` | Fetch the shared map and recreate any missing structure. `--eager` clones instead of writing placeholders. `--dry-run` prints the plan without writing. |
 | `daemon start [workspacePath]` | Run the background sync loop (pull → reconcile → fast-forward → push). `--once`, `--interval <s>`, `--eager`, `--no-fetch`, `--no-fast-forward`. |

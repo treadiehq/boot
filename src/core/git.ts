@@ -68,6 +68,22 @@ export async function getLastCommitDate(dir: string): Promise<Date | null> {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+/**
+ * Probe whether a remote URL exists and is reachable, without cloning.
+ * Returns git's error detail when it isn't, so callers can tell "repo doesn't
+ * exist" apart from auth/network failures.
+ */
+export async function gitRemoteProbe(
+  remoteUrl: string,
+): Promise<{ ok: boolean; detail: string }> {
+  // Never let the probe block on an interactive credential prompt — credential
+  // helpers still run; only terminal prompting is disabled.
+  const res = await git(["ls-remote", remoteUrl, "HEAD"], {
+    env: { GIT_TERMINAL_PROMPT: "0" },
+  });
+  return { ok: res.exitCode === 0, detail: String(res.stderr || res.stdout).trim() };
+}
+
 export async function cloneRepo(remoteUrl: string, targetPath: string): Promise<void> {
   const res = await git(["clone", remoteUrl, targetPath]);
   if (res.exitCode !== 0) {

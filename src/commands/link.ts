@@ -1,6 +1,12 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { ensureGitAvailable } from "../core/git";
+import { ensureGitAvailable, gitRemoteProbe } from "../core/git";
+import {
+  ghAvailable,
+  ghCreatePrivateRepo,
+  isRepoNotFoundError,
+  parseGitHubSlug,
+} from "../core/github";
 import { loadMachineIdentity } from "../core/identity";
 import {
   emptyWorkspaceMap,
@@ -21,11 +27,51 @@ import { cloneMap, initFolderMap, type MapTransport } from "../core/transport";
 import { colors, logger } from "../ui/logger";
 import { reconcileProgressHooks } from "../ui/plan";
 import { withSpinner } from "../ui/progress";
+import { confirm, isInteractive } from "../ui/prompt";
 
 export interface LinkOptions {
   eager?: boolean;
   /** Treat <remote> as an already-synced folder (Dropbox/Drive/…) instead of a git URL. */
   folder?: boolean;
+  /** Accept prompts (e.g. create a missing map remote) without asking. */
+  yes?: boolean;
+}
+
+/**
+ * Make sure the map remote exists before we try to clone it. If it doesn't and
+ * it's a GitHub URL with `gh` on PATH, offer to create it as a private repo on
+ * the spot — the "go make an empty repo first" step is the single biggest
+ * onboarding speed bump. Auth/network failures are left for clone to report.
+ */
+export async function ensureMapRemoteExists(
+  remote: string,
+  options: { yes?: boolean } = {},
+): Promise<void> {
+  const probe = await gitRemoteProbe(remote);
+  if (probe.ok || !isRepoNotFoundError(probe.detail)) return;
+
+  const slug = parseGitHubSlug(remote);
+  const canCreate = slug !== null && (await ghAvailable());
+
+  if (canCreate) {
+    const create =
+      options.yes ||
+      (isInteractive() &&
+        (await confirm(`Map remote doesn't exist. Create ${colors.cyan(slug)} as a private GitHub repo?`, {
+          default: true,
+        })));
+    if (create) {
+      await withSpinner(`creating ${slug} on GitHub`, () => ghCreatePrivateRepo(slug));
+      return;
+    }
+  }
+
+  const fix = slug
+    ? canCreate
+      ? `  boot setup/link with --yes, or:  gh repo create ${slug} --private`
+      : `  gh repo create ${slug} --private   (or create it empty+private at https://github.com/new)`
+    : "  create an empty private repo on your git host, then re-run";
+  throw new Error(`Map remote not found: ${remote}\nCreate it first, then re-run:\n${fix}`);
 }
 
 /**
@@ -57,6 +103,10 @@ export async function linkCommand(
       options.folder ? colors.dim(" (folder)") : ""
     }`,
   );
+
+  if (!options.folder) {
+    await ensureMapRemoteExists(remote, { yes: options.yes });
+  }
 
   const identity = await loadMachineIdentity();
   await fs.mkdir(paths.bootDir, { recursive: true });
