@@ -70,7 +70,7 @@ export function buildProgram(): Command {
   program
     .name("boot")
     .description(
-      "boot — Dropbox for ~/code. Sync your workspace structure across machines and hydrate repos on access.",
+      "Put the same repo layout on every machine. Repos appear instantly and clone when opened.",
     )
     .version(VERSION, "-v, --version", "print boot's version and exit");
 
@@ -83,27 +83,27 @@ export function buildProgram(): Command {
 
   program
     .command("setup")
-    .description("one-command onboarding: link → key → shell hook → daemon → summary")
-    .argument("[remote]", "git URL (or folder path with --folder); omit if already linked")
+    .description("set up this machine: layout, secrets, shell hook, and background sync")
+    .argument("[remote]", "map repo URL (or synced folder with --folder); omit if already linked")
     .argument("[workspacePath]", "workspace directory", ".")
-    .option("--folder", "treat <remote> as an already-synced folder, not a git URL", false)
-    .option("--eager", "clone repos instead of writing placeholders", false)
+    .option("--folder", "use a synced folder instead of a git repo for the map", false)
+    .option("--eager", "clone every repo now instead of creating placeholders", false)
     .option("-y, --yes", "accept all prompts (non-interactive)", false)
     .option("--no-hook", "skip installing the shell hook")
-    .option("--no-daemon", "skip installing the managed daemon service")
+    .option("--no-daemon", "skip the background sync service")
     .option("--no-key", "skip secret-key setup")
     .option("--import-key <base64>", "install a secret key exported from another machine")
     .option("--shell <shell>", "shell for the hook (zsh|bash|fish|powershell; auto-detected otherwise)")
     .option("--interval <seconds>", "daemon sync interval", (v) => Number.parseInt(v, 10))
-    .option("--mount <mountpoint>", "suggest this on-read mountpoint in the summary")
+    .option("--mount <mountpoint>", "show this mount path in the setup summary")
     .action((remote: string | undefined, workspacePath: string, options: SetupOptions) =>
       setupCommand(remote, workspacePath, options),
     );
 
   program
     .command("init")
-    .description("create default .bootignore and boot.yaml in a workspace")
-    .argument("<workspacePath>", "path to the developer workspace to initialise")
+    .description("write default boot config files")
+    .argument("<workspacePath>", "path to the workspace to initialize")
     .option("-f, --force", "overwrite existing files", false)
     .action((workspacePath: string, options: InitOptions) => initCommand(workspacePath, options));
 
@@ -113,26 +113,26 @@ export function buildProgram(): Command {
     .option("--ref <ref>", "release tag (binary install) or git ref (source install) to update to")
     .action((options: UpdateOptions) => updateCommand(options));
 
-  program.commandsGroup("Portable snapshot (offline, no remote):");
+  program.commandsGroup("One-time snapshots:");
 
   program
     .command("export")
     .alias("scan")
-    .description("save a portable snapshot of this workspace's git repos to a file")
-    .argument("<workspacePath>", "path to the developer workspace to snapshot")
+    .description("save this workspace's repo list to a file")
+    .argument("<workspacePath>", "path to the workspace to snapshot")
     .option("-o, --output <file>", "output snapshot path", DEFAULT_MANIFEST_NAME)
     .action((workspacePath: string, options: ScanOptions) => scanCommand(workspacePath, options));
 
   program
     .command("list")
-    .description("print a summary table of the repos in a snapshot file")
+    .description("show the repos in a snapshot file")
     .argument("<manifestPath>", "path to a boot snapshot file")
     .action((manifestPath: string) => listCommand(manifestPath));
 
   program
     .command("import")
     .alias("restore")
-    .description("recreate a workspace's folder structure and repos from a snapshot file")
+    .description("recreate folders and repos from a snapshot file")
     .argument("<manifestPath>", "path to a boot snapshot file")
     .argument("<targetPath>", "directory to recreate the workspace into")
     .option("--lazy", "create placeholders instead of cloning repos", false)
@@ -140,17 +140,17 @@ export function buildProgram(): Command {
       restoreCommand(manifestPath, targetPath, options),
     );
 
-  program.commandsGroup("On-access hydration:");
+  program.commandsGroup("Clone repos on demand:");
 
   program
     .command("hydrate")
-    .description("clone a placeholder repo into its folder")
+    .description("clone a placeholder repo now")
     .argument("<repoPath>", "path to a placeholder repo folder")
     .action((repoPath: string) => hydrateCommand(repoPath));
 
   program
     .command("enter")
-    .description("hydrate the placeholder you just navigated into (on-access trigger)")
+    .description("clone the placeholder at this path")
     .argument("[targetPath]", "directory you are entering", ".")
     .option("-q, --quiet", "print nothing (used by the shell hook)", false)
     .action((targetPath: string, options: { quiet?: boolean }) =>
@@ -159,7 +159,7 @@ export function buildProgram(): Command {
 
   program
     .command("cd")
-    .description("resolve a repo in your map (hydrating it), printing its path — pair with the `bcd` shell function")
+    .description("find a repo by name and print its path, cloning it first if needed")
     .argument("[query]", "fuzzy repo name or path; omit to browse interactively")
     .option("-C, --cwd <path>", "workspace directory (or anywhere inside it)", ".")
     .option("--print", "print only the resolved path to stdout (used by `bcd`)", false)
@@ -168,13 +168,13 @@ export function buildProgram(): Command {
 
   program
     .command("shell-hook")
-    .description("print a shell snippet that hydrates placeholders when you cd into them (and defines `bcd`)")
+    .description("print the shell snippet for auto-clone on cd and the `bcd` jump command")
     .argument("[shell]", "zsh, bash, fish, or powershell (auto-detected if omitted)")
     .action((shell?: string) => shellHookCommand(shell));
 
   program
     .command("watch")
-    .description("watch a workspace and hydrate placeholders on first write activity")
+    .description("clone a placeholder when a tool writes into it")
     .argument("[workspacePath]", "workspace directory", ".")
     .option("--debounce <ms>", "milliseconds to wait after activity", (v) => Number.parseInt(v, 10))
     .action((workspacePath: string, options: { debounce?: number }) =>
@@ -183,10 +183,10 @@ export function buildProgram(): Command {
 
   program
     .command("mount")
-    .description("mount a workspace as a virtual FS that hydrates files on first read (needs FUSE)")
+    .description("open a workspace through a mount that clones repos on first read (needs FUSE)")
     .argument("<workspacePath>", "workspace directory to expose")
     .argument("<mountpoint>", "directory to mount the virtual workspace at")
-    .option("--read-only", "reads still hydrate, but writes fail (EROFS)", false)
+    .option("--read-only", "reads can still clone repos, but writes fail (EROFS)", false)
     .option("--debug", "print FUSE operation traffic", false)
     .action((workspacePath: string, mountpoint: string, options: { debug?: boolean; readOnly?: boolean }) =>
       mountCommand(workspacePath, mountpoint, { debug: options.debug, readOnly: options.readOnly }),
@@ -202,58 +202,58 @@ export function buildProgram(): Command {
 
   program
     .command("status")
-    .description("show hydrated repos, placeholders, and other folders in a workspace")
-    .argument("<workspacePath>", "path to the developer workspace to inspect")
+    .description("show what is cloned, waiting, or dirty")
+    .argument("<workspacePath>", "path to the workspace to inspect")
     .action((workspacePath: string) => statusCommand(workspacePath));
 
   program
     .command("doctor")
-    .description("scan a workspace and print health warnings")
-    .argument("<workspacePath>", "path to the developer workspace to check")
-    .option("--system", "check boot's own setup (link, key, hook, daemon, FUSE) instead of repos", false)
+    .description("check a workspace for common problems")
+    .argument("<workspacePath>", "path to the workspace to check")
+    .option("--system", "check boot setup (link, key, hook, sync service, FUSE) instead of repos", false)
     .action((workspacePath: string, options: DoctorOptions) => doctorCommand(workspacePath, options));
 
   program.commandsGroup("Sync across machines:");
 
   program
     .command("link")
-    .description("connect a workspace to a shared boot map and sync its structure")
-    .argument("<remote>", "git URL of the map repo (or a folder path with --folder)")
+    .description("share this workspace layout with your other machines")
+    .argument("<remote>", "map repo URL (or synced folder with --folder)")
     .argument("[workspacePath]", "workspace directory to link", ".")
-    .option("--eager", "clone repos instead of writing placeholders", false)
-    .option("--folder", "treat <remote> as an already-synced folder (Dropbox/Drive/…), not a git URL", false)
-    .option("-y, --yes", "accept prompts (e.g. create a missing map remote via gh)", false)
+    .option("--eager", "clone every repo now instead of creating placeholders", false)
+    .option("--folder", "use a synced folder instead of a git repo for the map", false)
+    .option("-y, --yes", "accept prompts, like creating a missing GitHub map repo", false)
     .action((remote: string, workspacePath: string, options: LinkOptions) =>
       linkCommand(remote, workspacePath, options),
     );
 
   program
     .command("push")
-    .description("scan this workspace and publish its structure to the shared map")
+    .description("publish this machine's repo layout")
     .argument("[workspacePath]", "workspace directory", ".")
     .action((workspacePath: string) => pushCommand(workspacePath));
 
   program
     .command("pull")
-    .description("fetch the shared map and recreate any missing structure")
+    .description("bring in repo layout changes from other machines")
     .argument("[workspacePath]", "workspace directory", ".")
-    .option("--eager", "clone repos instead of writing placeholders", false)
+    .option("--eager", "clone every repo now instead of creating placeholders", false)
     .option("--dry-run", "show what would change without writing anything", false)
     .action((workspacePath: string, options: PullOptions) => pullCommand(workspacePath, options));
 
   program
     .command("agent")
-    .description("one-shot, idempotent bootstrap for CI / cloud agents (link-or-pull + hydrate)")
-    .argument("<remote>", "git URL of the map repo (or a folder path with --folder)")
+    .description("set up a CI job or cloud agent from your shared layout")
+    .argument("<remote>", "map repo URL (or synced folder with --folder)")
     .argument("[workspacePath]", "workspace directory", ".")
-    .option("--eager", "clone repos instead of writing placeholders", false)
-    .option("--all", "hydrate every placeholder after setup", false)
+    .option("--eager", "clone every repo now instead of creating placeholders", false)
+    .option("--all", "clone every placeholder after setup", false)
     .option(
       "--hydrate <patterns...>",
-      "hydrate placeholders whose relativePath matches these glob patterns",
+      "clone placeholders whose paths match these glob patterns",
     )
-    .option("--env", "materialize env vars if a secret key is present", false)
-    .option("--folder", "treat <remote> as an already-synced folder, not a git URL", false)
+    .option("--env", "write env files if a secret key is present", false)
+    .option("--folder", "use a synced folder instead of a git repo for the map", false)
     .option("--dry-run", "show what would change without writing anything", false)
     .action((remote: string, workspacePath: string, options: AgentOptions) =>
       agentCommand(remote, workspacePath, options),
@@ -261,11 +261,11 @@ export function buildProgram(): Command {
 
   const env = program
     .command("env")
-    .description("sync encrypted env vars across machines via the shared map");
+    .description("store encrypted env vars in your shared layout");
 
   env
     .command("init")
-    .description("create this machine's secret key (encrypts env vars in the map)")
+    .description("create this machine's secret key for env vars")
     .action(() => envInit());
 
   env
@@ -305,22 +305,22 @@ export function buildProgram(): Command {
 
   env
     .command("materialize")
-    .description("write decrypted .env files into the workspace (git-excluded)")
+    .description("write decrypted .env files into the workspace")
     .option("-C, --cwd <path>", "workspace directory", ".")
     .action((options: { cwd?: string }) => envMaterialize(options));
 
-  const envKey = env.command("key").description("manage and share the machine-local secret key");
+  const envKey = env.command("key").description("move the machine-local secret key");
 
   envKey
     .command("share")
-    .description("escrow the key in the map under a passphrase (recommended way to add a machine)")
+    .description("share this machine's key using a passphrase")
     .option("-C, --cwd <path>", "workspace directory", ".")
     .option("--passphrase <passphrase>", "passphrase (omit to be prompted)")
     .action((options: { cwd?: string; passphrase?: string }) => envKeyShare(options));
 
   envKey
     .command("receive")
-    .description("install the escrowed key from the map using its passphrase")
+    .description("install a shared key using its passphrase")
     .option("-C, --cwd <path>", "workspace directory", ".")
     .option("--passphrase <passphrase>", "passphrase (omit to be prompted)")
     .option("--force", "overwrite an existing key", false)
@@ -330,7 +330,7 @@ export function buildProgram(): Command {
 
   envKey
     .command("revoke")
-    .description("prune a stale escrowed-key entry from the map keyring")
+    .description("remove a shared-key entry from the map")
     .argument("<label>", "the entry label (usually the hostname that shared it)")
     .option("-C, --cwd <path>", "workspace directory", ".")
     .action((label: string, options: { cwd?: string }) => envKeyRevoke(label, options));
@@ -355,15 +355,15 @@ export function buildProgram(): Command {
 
   const daemon = program
     .command("daemon")
-    .description("run the background sync loop that keeps this workspace fresh");
+    .description("keep this workspace current in the background");
 
   daemon
     .command("start")
-    .description("start syncing on an interval (pull, reconcile, fast-forward, push)")
+    .description("sync this workspace on an interval")
     .argument("[workspacePath]", "workspace directory", ".")
     .option("--once", "run a single sync and exit", false)
     .option("--interval <seconds>", "seconds between syncs", (v) => Number.parseInt(v, 10))
-    .option("--eager", "clone repos instead of writing placeholders", false)
+    .option("--eager", "clone every repo now instead of creating placeholders", false)
     .option("--no-fetch", "skip fetching remotes / freshness checks")
     .option("--no-fast-forward", "assess freshness but never fast-forward repos")
     .action(
@@ -398,7 +398,7 @@ export function buildProgram(): Command {
 
   daemon
     .command("install")
-    .description("install the daemon as a managed service (launchd/macOS, systemd/Linux, Scheduled Tasks/Windows)")
+    .description("start background sync automatically when you log in")
     .argument("[workspacePath]", "workspace directory", ".")
     .option("--interval <seconds>", "seconds between syncs", (v) => Number.parseInt(v, 10))
     .option("--entry <path>", "path to the boot CLI entry the service should run")
@@ -408,7 +408,7 @@ export function buildProgram(): Command {
 
   daemon
     .command("uninstall")
-    .description("remove the managed daemon service for a workspace")
+    .description("remove automatic background sync for a workspace")
     .argument("[workspacePath]", "workspace directory", ".")
     .action((workspacePath: string) => daemonUninstall(workspacePath));
 

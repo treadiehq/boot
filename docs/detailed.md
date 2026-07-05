@@ -1,36 +1,30 @@
 # Boot — Detailed Reference
 
-Everything `boot` can do, in depth. For a quick start, see the
+Everything `boot` can do. For the shortest path, start with the
 [README](../README.md).
 
-boot keeps the **shape** of your code folder in sync across machines. It looks at
-a directory full of git repos, records which repos live where, and recreates that
-same layout anywhere else. Repos you haven't pulled down yet show up as tiny
-**placeholders** and turn into real clones the moment you open them, so a fresh
-machine is useful in seconds instead of waiting on gigabytes of clones.
+Boot puts the same repo layout on every laptop and cloud agent. Repos you have
+not opened yet show up as tiny **placeholders**, then clone when you open them.
+A fresh machine is useful in seconds instead of waiting on gigabytes of clones.
 
-It also syncs your **environment variables** (encrypted), and an optional
-background **daemon** keeps every machine up to date so you never build on a stale
-`main`.
+It also syncs your **environment variables** (encrypted) and can keep each
+machine current in the background, so you do not build on a stale `main`.
 
-**What it is not.** boot isn't a replacement for Git, a live backup, or a cloud
-service. It syncs the *map* of your workspace (and your secrets), not a real-time
-copy of the files you're editing.
+**What it is not.** Boot isn't a replacement for Git, a live backup, or a cloud
+service. It syncs your layout and secrets, not live edits.
 
-### A few words you'll see a lot
+## A Few Words You'll See A Lot
 
-- **Map** — a small, portable description of your workspace: which repos exist and
-  where each one lives. This is the thing that travels between machines.
-- **Placeholder** — a stand-in folder for a repo you haven't cloned yet.
-- **Hydrate** — swap a placeholder for the real clone, either on demand or
-  automatically the first time you touch it.
-- **Transport** — how the map gets from machine to machine: a Git remote (the
-  default) or a folder something else already syncs, like Dropbox.
+- **Map** — the saved layout: which repos exist and where each one lives.
+- **Placeholder** — a tiny folder for a repo you have not cloned yet.
+- **Hydrate** — Boot's word for cloning a placeholder repo.
+- **Transport** — how the map moves between machines: a Git remote by default,
+  or a folder already synced by another tool.
 
 ## Install
 
-One line per machine. It downloads a standalone binary for your platform from
-the latest GitHub Release and drops it on your PATH — no Node, no build step.
+One line per machine. It downloads the standalone `boot` binary for your
+platform and puts it on your PATH. No Node or build step needed.
 
 **macOS / Linux:**
 
@@ -45,8 +39,8 @@ irm https://raw.githubusercontent.com/treadiehq/boot/main/scripts/install.ps1 | 
 ```
 
 Binaries are published for macOS and Linux on `x64` and `arm64`, and Windows on
-`x64` (which also runs on Windows ARM via emulation). You only need **Git** on
-your PATH at runtime (boot shells out to it to clone/hydrate repos).
+`x64` (which also runs on Windows ARM through emulation). You only need **Git**
+on your PATH at runtime.
 
 The installers honor a few environment overrides:
 
@@ -66,8 +60,8 @@ BOOT_VERSION=v0.1.0 curl -fsSL https://raw.githubusercontent.com/treadiehq/boot/
 $env:BOOT_VERSION = "v0.1.0"; irm https://raw.githubusercontent.com/treadiehq/boot/main/scripts/install.ps1 | iex
 ```
 
-From a local clone instead (for development), build a binary with [Bun](https://bun.sh)
-or run from source with Node + pnpm:
+For development, build a binary with [Bun](https://bun.sh) or run from source
+with Node + pnpm:
 
 ```bash
 pnpm install && pnpm build:binary   # → dist/release/boot-<os>-<arch>
@@ -75,7 +69,7 @@ pnpm install && pnpm build:binary   # → dist/release/boot-<os>-<arch>
 pnpm install && pnpm dev <cmd>
 ```
 
-### Staying current — `boot update`
+### Updating Boot
 
 Once installed, keep a machine up to date with:
 
@@ -84,12 +78,9 @@ boot update              # download the latest released binary for this platform
 boot update --ref v1.2   # install a specific release tag
 ```
 
-For a binary install, `boot update` re-runs the installer to fetch the latest
-release. On Unix that replaces the running binary in place; on Windows the
-PowerShell installer renames the live `boot.exe` aside (Windows allows renaming
-but not overwriting a running exe) and drops the new one in, so a new terminal
-picks it up. For a from-source git checkout, it instead fetches the latest
-source and rebuilds, and refuses to touch a checkout with local changes.
+For a binary install, `boot update` re-runs the installer and fetches the latest
+release. For a source checkout, it fetches the latest source and rebuilds. It
+refuses to touch a checkout with local changes.
 
 ## Releasing
 
@@ -108,114 +99,103 @@ git push --follow-tags
 
 > The optional FUSE `mount` feature relies on the native `fuse-native` addon,
 > which isn't bundled into the static binary. `boot mount` prints install help in
-> the binary build; the rest of boot (sync, hydrate, daemon, shell hook) works
+> the binary build; the rest of Boot (sync, hydrate, daemon, shell hook) works
 > fully without it.
 
-## One-command onboarding — `boot setup`
+## Set Up A Machine
 
-`boot setup` is the front door: it runs the whole wiring sequence and prints a
-health summary, so a fresh machine goes from nothing to fully-synced in one step.
+`boot setup` is the one command you run on each machine. It connects the
+workspace, sets up encrypted env vars, installs auto-clone on `cd`, starts
+background sync, and prints a health check.
 
-> **Before the very first machine:** you need a private git repo to hold the map
-> (any host; a name like `code-map` is fine). If the remote doesn't exist yet and
-> it's a GitHub URL with the [GitHub CLI](https://cli.github.com) on PATH, setup
-> offers to create it as a private repo for you (`--yes` accepts non-interactively).
-> On other hosts, or without `gh`, create it empty first — the first sync seeds it.
-> With the `--folder` transport you point at an already-synced folder instead and
-> skip the git repo entirely.
+> **Before the first machine:** create one private git repo to hold the layout.
+> A name like `code-map` is fine. If it is a GitHub repo and you have the
+> [GitHub CLI](https://cli.github.com), `boot setup` can create it for you.
+> With `--folder`, you can use a synced folder instead of a git repo.
 
 ```bash
-boot setup git@github.com:me/my-code-map.git ~/code   # interactive
+boot setup git@github.com:me/my-code-map.git ~/code
 boot setup --folder ~/Dropbox/boot-map ~/code         # folder transport
 boot setup … --yes                                    # accept every step (scriptable)
 ```
 
-It performs, in order:
+What setup does:
 
-1. **Map** — `link` if the workspace is new, or `pull` if it's already linked
-   (so re-running is safe and idempotent).
-2. **Secret key** — keeps an existing key; on a first machine offers to create
-   one; on a machine that's missing the key for *existing* encrypted scopes, it
-   prompts you to import it (`--import-key <base64>` to do it non-interactively).
-3. **Shell hook** — offers to append the hydrate-on-`cd` snippet to your shell rc
-   (or PowerShell `$PROFILE` on Windows) so repos hydrate as you navigate
-   (`--shell`, `--no-hook`).
-4. **Background daemon** — offers to install the managed service — launchd
-   (macOS), systemd `--user` (Linux), or a Scheduled Task (Windows)
-   (`--interval`, `--no-daemon`).
-5. **On-read mount** — reports whether FUSE is available and the exact
-   `boot mount` command (it's a foreground process, so setup doesn't start it).
+1. **Layout** — links a new workspace, or pulls the latest layout if it is
+   already linked.
+2. **Secret key** — creates or imports the key used for encrypted env vars.
+3. **Shell hook** — adds the snippet that clones repos when you `cd` into them.
+4. **Background sync** — installs the service that keeps the layout and clean
+   repos current.
+5. **On-read mount** — shows whether the optional FUSE mount is available and
+   prints the exact `boot mount` command.
 
-Prompts only appear on a TTY; with `--yes` (or any `--no-*` flag) it runs
-unattended, making it equally good for laptops and provisioning scripts. Verify
-the result anytime with `boot doctor --system`.
+Prompts only appear in an interactive terminal. Use `--yes` and `--no-*` flags
+for scripts. Check the result anytime with `boot doctor --system`.
 
-## Running boot
+## Run Boot
 
-Once installed, just call `boot`. If you're working from a clone instead, put
-`pnpm dev` in front of any command to run it straight from source.
+Once installed, call `boot`. If you are working from source, put `pnpm dev`
+before any command.
 
 ```bash
 boot init ~/code                      # write a default .bootignore + boot.yaml
 boot export ~/code                    # save a snapshot file (boot-workspace.json)
 boot list boot-workspace.json         # see what's inside a snapshot
-boot import boot-workspace.json /tmp/code --lazy   # recreate it elsewhere as placeholders
+boot import boot-workspace.json /tmp/code --lazy   # recreate it with placeholders
 boot hydrate /tmp/code/apps/kplane    # clone one placeholder
 boot status ~/code                    # what's hydrated, what's still a placeholder
 boot doctor ~/code                    # health warnings
 ```
 
-From a clone during development the same thing looks like
-`pnpm dev export ~/code`, `pnpm dev import …`, and so on.
+From source, the same thing looks like `pnpm dev export ~/code`,
+`pnpm dev import …`, and so on.
 
 ## Commands
 
-> **Two tiers.** The everyday path is the **map** workflow (`setup`, `link`,
-> `push`, `pull`, `daemon`, `agent`, `env`), live, continuous sync across
-> machines. The **snapshot** commands (`export`, `list`, `import`) are a
-> lower-level, offline path: a one-shot portable file with no remote. Most
-> people only need the map workflow; `boot --help` groups them this way.
-> (`export`/`import` were previously `scan`/`restore`, which still work as
-> aliases.)
+Most people use the shared-layout commands: `setup`, `link`, `push`, `pull`,
+`daemon`, `agent`, and `env`. The snapshot commands, `export`, `list`, and
+`import`, are for one-time offline moves with no remote. `export` and `import`
+used to be called `scan` and `restore`; those aliases still work.
 
 | Command | What it does |
 | --- | --- |
-| `setup [remote] <workspacePath>` | One-command onboarding: link/pull → secret key → shell hook → managed daemon → health summary. `--folder`, `--eager`, `-y, --yes`, `--no-hook`, `--no-daemon`, `--no-key`, `--import-key <base64>`, `--shell <shell>`, `--interval <s>`, `--mount <mnt>`. |
+| `setup [remote] <workspacePath>` | Set up a machine in one command: layout, secrets, shell hook, background sync, and health check. |
 | `init <workspacePath>` | Write a default `.bootignore` and `boot.yaml`. `--force` to overwrite. |
-| `update` | Self-update boot. A binary install re-runs the installer to fetch the latest release (`--ref <tag>` to pin a release); a from-source git checkout fetches and rebuilds (skips when current, refuses if the checkout has local changes). |
-| `export <workspacePath>` | *(snapshot, lower-level; alias `scan`)* Recursively find git repos and write a portable snapshot file. `--output <file>` to change the path. |
-| `list <manifestPath>` | *(snapshot, lower-level)* Print a clean table of repos in a snapshot file. |
-| `import <manifestPath> <targetPath>` | *(snapshot, lower-level; alias `restore`)* Recreate folders and clone repos from a snapshot file. `--lazy` writes placeholders instead of cloning. Never overwrites an existing repo. |
-| `hydrate <repoPath>` | Clone a placeholder repo into its folder and mark it hydrated. |
-| `enter [targetPath]` | Hydrate the nearest placeholder at/above a path, the on-access trigger. `-q, --quiet` for the shell hook. |
-| `cd [query]` | Fuzzy-resolve a repo in the map and print its path, hydrating it first. Omit the query to browse. `-C <path>`, `--print` (used by the `bcd` shell function), `--json`. |
-| `shell-hook [shell]` | Print a `zsh`/`bash`/`fish`/`powershell` snippet that runs `enter` on every `cd` and defines the `bcd` quick-jump. |
-| `watch [workspacePath]` | Watch a workspace and hydrate placeholders the moment a tool writes into one. `--debounce <ms>`. |
-| `mount <workspacePath> <mountpoint>` | Mount the workspace as a read-write virtual FS that hydrates a repo on first **read** (`cat`, editor open, grep). Needs FUSE (`fuse-native` + macFUSE/libfuse). `--read-only`, `--debug`. |
+| `update` | Update Boot. Use `--ref <tag>` to install a specific release. |
+| `export <workspacePath>` | Save this workspace's repo list to a snapshot file. Alias: `scan`. |
+| `list <manifestPath>` | Show the repos in a snapshot file. |
+| `import <manifestPath> <targetPath>` | Recreate folders and repos from a snapshot file. `--lazy` writes placeholders instead of cloning. Alias: `restore`. |
+| `hydrate <repoPath>` | Clone a placeholder repo now. |
+| `enter [targetPath]` | Clone the placeholder at or above a path. Used by the shell hook. |
+| `cd [query]` | Find a repo by name and print its path, cloning it first if needed. Use `bcd` to actually jump there. |
+| `shell-hook [shell]` | Print the shell snippet for auto-clone on `cd` and the `bcd` jump command. |
+| `watch [workspacePath]` | Clone a placeholder when a tool writes into it. |
+| `mount <workspacePath> <mountpoint>` | Open a workspace through a mount that clones repos on first read. Needs FUSE. |
 | `unmount <mountpoint>` | Force-unmount a workspace mounted with `mount`. |
-| `agent <remote> [workspacePath]` | One-shot, idempotent bootstrap for CI / cloud agents: link-or-pull, then optionally hydrate. `--eager`, `--all`, `--hydrate <patterns...>`, `--env`, `--folder`, `--dry-run` (preview the plan). |
-| `env set\|import\|list\|rm\|materialize` | Sync **encrypted env vars** across machines via the map. `--repo <relativePath>` to scope to one repo; `-C <path>` for the workspace. |
-| `env init` | Create the machine-local secret key that encrypts env vars (never synced). |
-| `env key share\|receive` | Move the key to a new machine through the map, encrypted under a passphrase. `share` escrows it; `receive` unlocks it. You transfer a short passphrase, not the raw key. `--passphrase`, `--force`. |
-| `env key revoke <label>` | Prune a stale escrowed-key entry (e.g. a retired machine) from the map keyring. Stops *future* unlocks; rotate the key itself if it may be compromised. |
-| `env key export\|import` | Lower-level key transfer. `export` copies to the clipboard by default (`--file`, `--stdout`); `import` reads an arg, `--file`, or stdin. |
-| `status <workspacePath>` | Show hydrated repos, placeholders, dirty repos, and other folders. |
-| `doctor <workspacePath>` | Print warnings (dirty repos, no remote, off-main, placeholders, stale, missing lockfiles, missing ignore file, generated folders). `--system` instead checks boot's own wiring (link, secret key, shell hook, daemon/service, FUSE). |
-| `link <remote> [workspacePath]` | Connect a workspace to a shared **map**, publish what's here, and recreate everything else as placeholders. `--eager` clones instead. `--folder` treats `<remote>` as an already-synced folder (Dropbox/Drive/…) instead of a git URL. `-y/--yes` accepts prompts, e.g. creating a missing GitHub map remote via `gh`. |
-| `push [workspacePath]` | Scan this workspace and publish its structure to the shared map. |
-| `pull [workspacePath]` | Fetch the shared map and recreate any missing structure. `--eager` clones instead of writing placeholders. `--dry-run` prints the plan without writing. |
-| `daemon start [workspacePath]` | Run the background sync loop (pull → reconcile → fast-forward → push). `--once`, `--interval <s>`, `--eager`, `--no-fetch`, `--no-fast-forward`. |
+| `agent <remote> [workspacePath]` | Set up a CI job or cloud agent from your shared layout. |
+| `env set\|import\|list\|rm\|materialize` | Store encrypted env vars in the shared layout. Use `--repo <relativePath>` for one repo. |
+| `env init` | Create this machine's secret key for env vars. |
+| `env key share\|receive` | Move the secret key to a new machine with a passphrase. |
+| `env key revoke <label>` | Remove a shared-key entry from the map. |
+| `env key export\|import` | Lower-level key transfer by clipboard, file, arg, or stdin. |
+| `status <workspacePath>` | Show what is cloned, waiting, or dirty. |
+| `doctor <workspacePath>` | Check a workspace for common problems. `--system` checks Boot's setup on this machine. |
+| `link <remote> [workspacePath]` | Share this workspace layout with your other machines. `--folder` uses a synced folder instead of a git repo. |
+| `push [workspacePath]` | Publish this machine's repo layout now. |
+| `pull [workspacePath]` | Bring in repo layout changes from other machines. `--dry-run` previews. |
+| `daemon start [workspacePath]` | Sync this workspace on an interval. |
 | `daemon stop [workspacePath]` | Stop the running daemon for a workspace. |
-| `daemon status [workspacePath]` | Show whether the daemon is running, whether a managed service is installed, and the last sync. |
-| `daemon install [workspacePath]` | Install the daemon as a managed OS service (launchd on macOS, systemd on Linux, a Scheduled Task on Windows) so it starts on login. `--interval <s>`, `--entry <path>`. |
-| `daemon uninstall [workspacePath]` | Stop and remove the managed service for a workspace. |
+| `daemon status [workspacePath]` | Show whether background sync is running and when it last synced. |
+| `daemon install [workspacePath]` | Start background sync automatically when you log in. |
+| `daemon uninstall [workspacePath]` | Remove automatic background sync for a workspace. |
 
 ## Ignore rules — `.bootignore`
 
 A gitignore-style ignore file, supported at the **workspace root** and inside
 **individual repos**:
 
-```
+```gitignore
 node_modules/
 .next/
 dist/
@@ -230,17 +210,17 @@ target/
 - Directory rules end with `/`, plain names match files or directories, and
   `*`/`?` globs match within a single path segment. (Negation `!` is not yet
   supported.)
-- Rules are merged with boot's built-in defaults and any
+- Rules are merged with Boot's built-in defaults and any
   `ignore:` list in `boot.yaml`.
 - Ignored directories are never descended into during a scan.
 - The snapshot file records every ignore file that was applied (`config.ignoreFiles`).
 
 ### How deep the map goes
 
-There's no limit on nesting you'll hit in practice: boot maps arbitrarily nested
+There's no limit on nesting you'll hit in practice: Boot maps arbitrarily nested
 subfolders, descending up to **12 directory levels** below the workspace root (a
 safety bound so a pathological tree can't recurse forever). Every git repo (and
-every placeholder) is treated as a **leaf** — boot records it and stops, never
+every placeholder) is treated as a **leaf** — Boot records it and stops, never
 recursing *inside* a repo, so a repo nested within another repo isn't mapped as
 its own entry. Ignored folders (`node_modules`, `dist`, …) are skipped entirely,
 and symlinks aren't followed.
@@ -278,7 +258,7 @@ If absent, sane defaults are used (`hydrate.strategy: eager`,
 `boot import --lazy` recreates the folder tree but, instead of cloning, drops a
 placeholder in each repo folder:
 
-```
+```text
 apps/kplane/.boot/repo.json     # name, relativePath, remoteUrl, branch, lastCommit, hydrateStatus, createdAt
 apps/kplane/.boot/README.md     # how to hydrate this repo
 ```
@@ -292,10 +272,9 @@ placeholder intact if the clone fails.
 
 ## Syncing the map across machines
 
-`export`/`import` move a snapshot file by hand. `link`/`push`/`pull` make the map
-**sync itself**, no files to email around. The map is carried by a pluggable
-**transport**, which you choose once at `link` time; every other command works
-the same no matter which backend you picked.
+`export` and `import` move a snapshot file by hand. `link`, `push`, and `pull`
+keep the layout shared between machines. You choose one transport at `link`
+time: a Git remote or a synced folder.
 
 ```bash
 # First machine (already has ~/code full of repos): seed the map.
@@ -304,33 +283,29 @@ boot link git@github.com:me/my-code-map.git ~/code
 # Any other machine (or a cloud agent): the structure appears as placeholders.
 boot link git@github.com:me/my-code-map.git ~/code
 
-# Day to day (optional — the daemon does both of these for you every 60s):
+# Day to day (optional; background sync does this for you):
 boot push ~/code     # publish new/changed repos to the map
 boot pull ~/code     # receive structure added on other machines
 ```
 
-With the background daemon installed (see below), you normally never run `push`
-or `pull` by hand — they're on-demand escape hatches for when you want an
-immediate sync instead of waiting for the next tick.
+With background sync installed, you normally never run `push` or `pull` by hand.
+They are there when you want to sync right now.
 
 ### Choosing a transport
 
 | Transport | `link` form | Best when |
 | --- | --- | --- |
-| **Git** (default) | `boot link <git-url> ~/code` | You want history, atomic updates, and real merges for concurrent edits. Runs everywhere boot does, including fresh cloud agents. boot commits/pulls with its own bookkeeping identity — you never touch git directly. |
-| **Folder** (`--folder`) | `boot link --folder ~/Dropbox/boot-map ~/code` | You'd rather not host a git remote and already have a folder kept in sync by Dropbox / iCloud Drive / Google Drive / a network share. boot just mirrors the map to/from that folder. |
+| **Git** (default) | `boot link <git-url> ~/code` | You want history, safe updates, and real merges. This works everywhere Boot runs, including cloud agents. |
+| **Folder** (`--folder`) | `boot link --folder ~/Dropbox/boot-map ~/code` | You already have Dropbox, iCloud Drive, Google Drive, or a network share and do not want a git repo for the map. |
 
-The folder transport drops the "you must host a git remote" requirement, but it
-leans on the syncing tool for conflict handling: under *truly concurrent* writes
-from two machines, whatever Dropbox/iCloud does (e.g. a "conflicted copy" file)
-is what you get, instead of git's merge. boot minimizes that window by always
-**pulling before it pushes**, and the map is split per-machine so the only shared
-file is `workspace.json` (merged structurally). For a single person across a few
-machines this is a non-issue; for a team, prefer git.
+Folder transport is simpler, but conflict handling belongs to the sync tool. If
+two machines write at the same time, Dropbox or iCloud may create a conflicted
+copy. For one person across a few machines this is usually fine. For a team,
+prefer Git.
 
 The map is split so machines never fight over one file:
 
-```
+```text
 ~/code/.boot/map/              # the local map working copy (git repo, or plain files for --folder)
   workspace.json               # shared, machine-independent truth (the repo set)
   machines/<machineId>.json    # per-machine state (root path, OS, hydrate status)
@@ -343,36 +318,33 @@ The map is split so machines never fight over one file:
 - Each machine owns its own `machines/<id>.json`, so machine state never
   conflicts. Machine identity lives in `~/.boot/machine.json` (override the
   location with `BOOT_HOME`).
-- `link`/`pull` reconcile **lazily** by default (placeholders); pass `--eager`
-  to clone. Hydrate a placeholder anytime with `boot hydrate <relativePath>`.
+- `link` and `pull` create placeholders by default; pass `--eager` to clone
+  every repo immediately. Clone one placeholder anytime with
+  `boot hydrate <relativePath>`.
 
-## The daemon — `boot daemon`
+## Background Sync
 
-`link`/`push`/`pull` are still commands you run. The daemon turns them into a
-loop so the workspace stays current **with no effort**, and keeps you from ever
-building on a stale base.
+`boot daemon` keeps your workspace current in the background. It syncs the
+layout and fast-forwards clean repos when it is safe.
 
 ```bash
-boot daemon start ~/code            # sync forever on an interval (Ctrl-C to stop)
+boot daemon start ~/code            # sync on an interval (Ctrl-C to stop)
 boot daemon start ~/code --once     # one sync and exit (cron / CI / a quick check)
 boot daemon status ~/code           # running? when did it last sync?
 boot daemon stop ~/code             # stop the loop
 ```
 
-Each tick does, in order:
+Each sync does, in order:
 
 1. **pull** the shared map,
-2. **reconcile** — write placeholders for repos added on other machines,
-3. **freshness** — `git fetch` every hydrated repo and, when it's safe,
-   **fast-forward** it to its remote,
+2. **recreate missing folders** for repos added on other machines,
+3. **fetch** every cloned repo and, when safe, **fast-forward** it,
 4. **push** this machine's updated view back.
 
-The freshness step is deliberately conservative, it only ever fast-forwards a
-repo that is **clean**, on a **default branch** (`main`/`master`), and has **no
-local-only commits**. Everything else is *reported, never changed*: dirty repos,
-diverged branches, feature branches, and detached heads are left exactly as you
-left them. This is the cure for "I spun up a worktree and forgot to pull latest
-main". State lives in `~/code/.boot/daemon.json` (machine-local, not synced).
+Boot is conservative. It only fast-forwards a repo that is **clean**, on a
+**default branch** (`main`/`master`), and has **no local-only commits**. Dirty
+repos, feature branches, diverged branches, and detached heads are reported but
+not changed.
 
 Tune it in `boot.yaml`:
 
@@ -383,10 +355,10 @@ daemon:
   fastForward: true       # auto fast-forward clean default-branch repos
 ```
 
-### Run it as a managed service
+### Start It Automatically
 
-`daemon start` runs in the foreground. To have it start on boot and stay running
-in the background, install it as an OS service:
+`daemon start` runs in the foreground. To start background sync when you log in,
+install it as an OS service:
 
 ```bash
 boot daemon install ~/code      # launchd (macOS) / systemd --user (Linux) / Scheduled Task (Windows)
@@ -402,30 +374,26 @@ boot daemon uninstall ~/code    # stop + remove it
   restart-on-failure) with `schtasks /Create /XML`, keeping the task XML under
   `~/.boot/services/` so `daemon status`/`uninstall` can find it again.
 
-Each workspace gets its own service (`<id>` is a hash of the workspace path), so
-you can manage several independently. Logs go to `~/code/.boot/daemon.log`. The
-service runs `boot daemon start <workspace>` under the hood, so it restarts on
-boot/crash; remove it with `daemon uninstall` (a plain `daemon stop` would just
-be relaunched by the service manager).
+Each workspace gets its own service, so you can manage several independently.
+Logs go to `~/code/.boot/daemon.log`. Remove the service with
+`boot daemon uninstall`.
 
 > Install resolves the running `boot` binary. If you're working from source,
 > `pnpm build` and install the built CLI (or pass `--entry <path>`) so the
 > service can start without `tsx`.
 
-## On-access hydration — touch it and it appears
+## Clone Repos When You Need Them
 
-Placeholders keep a fresh machine tiny: you get the whole *shape* of your
-workspace without cloning gigabytes you may never open. The last mile is making
-a placeholder **materialise the moment you actually use it**, instead of running
-`boot hydrate` by hand.
+Placeholders keep a fresh machine tiny. You get the whole workspace layout
+without cloning gigabytes you may never open. Boot can clone a placeholder the
+moment you use it.
 
-boot offers **three** triggers, in increasing order of magic (and of setup).
-All of them funnel through the same `hydratePlaceholder` core, so behaviour is
-identical: never overwrite a real repo, keep the recorded branch, preserve
-`.boot/`, and leave the placeholder intact if the clone fails.
+Boot offers three triggers. All use the same core behavior: never overwrite a
+real repo, keep the recorded branch, preserve `.boot/`, and leave the
+placeholder intact if the clone fails.
 
-**1. Hydrate on `cd` (the shell hook).** Add the hook once and navigating into
-any part of the workspace pulls it down right then:
+**1. Clone on `cd` (the shell hook).** Add the hook once, then navigating into
+a placeholder clones it:
 
 ```bash
 eval "$(boot shell-hook zsh)"     # ~/.zshrc   (also: bash | fish)
@@ -437,23 +405,22 @@ On Windows, add the PowerShell hook to your `$PROFILE` instead:
 Invoke-Expression (& boot shell-hook powershell | Out-String)
 ```
 
-Now `cd ~/code/apps/kplane` hydrates `kplane` in the background before you even
-run a command. Under the hood the hook just calls the on-access trigger:
+Now `cd ~/code/apps/kplane` clones `kplane` before you run a command. Under the
+hood, the hook calls:
 
 ```bash
-boot enter ~/code/apps/kplane     # hydrate the nearest placeholder at/above a path
-boot enter .                      # i.e. "materialise wherever I am" (no-op if nothing lazy)
+boot enter ~/code/apps/kplane     # clone the nearest placeholder at/above a path
+boot enter .                      # clone here if this is a placeholder
 ```
 
-`enter` walks up from the path you give it to the nearest placeholder, hydrates
-that one repo, and does nothing if you're already in real, hydrated code, so
-it's safe to fire on *every* directory change.
+`enter` walks up from the path you give it to the nearest placeholder, clones
+that one repo, and does nothing if you are already in real code.
 
-**2. Hydrate on first touch (the watcher).** When a tool or editor writes into a
-placeholder, hydrate it automatically:
+**2. Clone on first write (the watcher).** When a tool or editor writes into a
+placeholder, clone it automatically:
 
 ```bash
-boot watch ~/code     # foreground; hydrates placeholders on first write activity
+boot watch ~/code     # foreground; clones placeholders on first write
 ```
 
 The watcher uses one recursive FS watch on macOS/Windows and per-placeholder
@@ -461,14 +428,13 @@ watches on Linux. The instant a write lands inside a placeholder it clones the
 real repo in place (preserving `.boot/`), then disarms that placeholder so the
 clone's own writes can't re-trigger it.
 
-**3. Hydrate on read (the FUSE mount).** The deepest integration: expose the
-workspace as a virtual filesystem where even a *passive read* materialises a
-repo. A bare `cat mnt/apps/web/package.json`, or an editor opening the file, or
-a `grep -r`, clones `apps/web` on the spot, transparently.
+**3. Clone on read (the FUSE mount).** Open the workspace through a virtual
+filesystem, and even reading a file can clone its repo. `cat`, an editor open,
+or `grep -r` can clone `apps/web` on the spot.
 
 ```bash
 boot mount ~/code ~/code-live    # foreground; Ctrl-C (or `boot unmount`) to detach
-cat ~/code-live/apps/web/package.json   # apps/web hydrates on this read
+cat ~/code-live/apps/web/package.json   # apps/web clones on this read
 boot unmount ~/code-live
 ```
 
@@ -483,35 +449,30 @@ sudo apt install fuse3 libfuse-dev # or your distro's equivalent
 pnpm add fuse-native
 ```
 
-`fuse-native` is an **optional dependency**, boot installs and works fully
-without it; only `boot mount` requires it, and it prints these exact instructions
-if it's missing. The mount is a **read-write** overlay: reads and writes pass
-straight through to the underlying files, and the first access *into* an
-un-hydrated placeholder clones it first (`getattr`/`readdir`/`open`, and any
-write, all trigger it). Edits, creates, renames, and deletes land on the real
-files. The hydration "brain" (`core/vfs.ts`) is unit-tested independently of FUSE
-(reads, writes, and the read-only guard); only the thin native binding needs the
-kernel module.
+`fuse-native` is an **optional dependency**, so Boot works fully without it.
+Only `boot mount` requires it, and it prints these instructions if it is
+missing. The mount is a **read-write** overlay: reads and writes pass through to
+the real files, and the first access into an uncloned placeholder clones it.
+Edits, creates, renames, and deletes land on the real files. The clone logic
+(`core/vfs.ts`) is unit-tested independently of FUSE; only the thin native
+binding needs the kernel module.
 
-> Pass `--read-only` to make reads still hydrate but reject writes with `EROFS`,
+> Pass `--read-only` to make reads still clone but reject writes with `EROFS`,
 > handy for inspection or untrusted agents. A native macOS **File Provider**
 > extension (no macFUSE install) is the remaining nicety.
 
 ## Jump to any repo — `boot cd` and `bcd`
 
-The triggers above are *passive* — they hydrate the repo you happen to navigate
-into. `boot cd` is the *active* counterpart: name a repo and jump straight to it,
-no matter where it lives in the tree, hydrating it on the way. Because the target
-is resolved from the **map**, you can jump to a repo that's still just a
-placeholder — even one you've never cloned on this machine — and it materialises
-on arrival.
+The triggers above clone the repo you happen to touch. `boot cd` is direct:
+name a repo and jump straight to it, no matter where it lives in the tree. If
+the repo is still a placeholder, Boot clones it on the way.
 
 A child process can't change its parent shell's directory, so `boot cd` *prints*
 the resolved path and a tiny shell function does the `cd`. The function `bcd` is
 bundled into the shell hook (`boot shell-hook`), so once that's installed:
 
 ```bash
-bcd web            # fuzzy-match "web" across your map, hydrate it, and cd in
+bcd web            # fuzzy-match "web", clone it if needed, and cd in
 bcd apps/api       # path fragments work too
 boot cd            # no query → interactive picker of every repo in the map
 ```
@@ -527,9 +488,8 @@ boot cd            # no query → interactive picker of every repo in the map
 
 ## Environment variables — `boot env`
 
-"Set up env vars and keep them consistent across machines" is one of the original
-pain points. boot syncs env vars through the same map repo, **encrypted at rest**
-so the map stays safe to host anywhere.
+Boot can keep env vars consistent across machines too. Values are encrypted
+before they enter the map, so the map stays safe to host anywhere.
 
 ```bash
 boot env init                                   # create this machine's secret key
@@ -547,21 +507,18 @@ How it works:
   ciphertext is authenticated, so tampering is detected on decrypt.
 - The **key never enters the map** in plaintext. It lives machine-local at
   `~/.boot/secret.key` (`0600`, overridable via `BOOT_HOME`). To use the same
-  secrets elsewhere, the recommended way is a **passphrase-protected escrow**
-  that rides the map, you transfer a short passphrase out-of-band, never the
-  44-char key:
+  secrets elsewhere, share the key with a passphrase. The encrypted key rides in
+  the map; you transfer only the short passphrase:
 
 ```bash
 boot env key share      # on a machine with the key: pick a passphrase
-                        #   → wraps the key (scrypt + AES-256-GCM) into keyring.json in the map
-boot env key receive    # on the new machine: enter the passphrase → key installed
+boot env key receive    # on the new machine: enter the passphrase
 ```
 
-  The wrapped blob in the map is inert without the passphrase. `boot setup`
-  detects an escrowed key and offers to unlock it during the secret-key step.
-  Prune a stale entry (a machine you've retired) with `boot env key revoke
-  <label>`, that stops future unlocks, though machines that already received
-  the key keep it, so rotate the key itself if it might be compromised.
+  The encrypted key in the map is useless without the passphrase. `boot setup`
+  detects it and offers to unlock it. Remove an old entry with
+  `boot env key revoke <label>`. Machines that already received the key keep it,
+  so rotate the key itself if it might be compromised.
 
 - If you'd rather hand-carry the raw key, the lower-level commands still exist.
   `export` copies to the clipboard by default (so it stays out of shell history),
@@ -577,30 +534,28 @@ cat secret.key | boot env key import   # or pipe it in
 - `boot env materialize` decrypts and writes plain `.env` files into the workspace
   (workspace root for global, each repo's folder for repo scopes) and adds `.env`
   to the repo's `.git/info/exclude` so it can never be committed by accident.
-- A machine **without** the key can still sync structure; env commands just tell
-  it to import the key first. Wrong key or corrupted data fails loudly instead of
-  producing garbage.
+- A machine **without** the key can still sync the layout. Env commands just ask
+  you to import the key first. Wrong key or corrupted data fails loudly instead
+  of producing garbage.
 
 ## Cloud agents & CI — `boot agent`
 
-`boot agent` is a one-shot, **idempotent**, non-interactive bootstrap meant to run
-at the top of a CI job or a fresh cloud-agent container:
+`boot agent` sets up a CI job or cloud agent from your shared layout. It is safe
+to run every time:
 
 ```bash
 boot agent git@github.com:me/my-code-map.git ~/code           # link (or pull) → placeholders
 boot agent git@github.com:me/my-code-map.git ~/code --eager   # clone everything up front
-boot agent … --hydrate 'apps/*' 'libs/api'                    # hydrate only what you need
-boot agent … --all --env                                      # hydrate everything + write .env files
-boot agent … --all --dry-run                                  # preview the blast radius, write nothing
+boot agent … --hydrate 'apps/*' 'libs/api'                    # clone only what you need
+boot agent … --all --env                                      # clone everything + write .env files
+boot agent … --all --dry-run                                  # preview the plan, write nothing
 ```
 
-- First run **links** the workspace; later runs just **pull** and re-apply
-  structure, safe to run every time.
-- `--hydrate <patterns…>` materialises only the placeholders whose `relativePath`
-  matches (simple `*` globs), so an agent pulls **just the repos it touches**
-  instead of the whole world.
-- `--env` materialises env vars when the secret key is present, and silently skips
-  (with a hint) when it isn't, so the same command works with or without secrets.
+- First run **links** the workspace. Later runs **pull** and re-apply the layout.
+- `--hydrate <patterns…>` clones only matching placeholders, so an agent pulls
+  just the repos it needs.
+- `--env` writes env files when the secret key is present, and skips with a hint
+  when it is not.
 
 ## Snapshot file shape
 
@@ -655,6 +610,5 @@ pnpm qa             # full CLI workflow smoke test
 
 - a native **macOS File Provider** extension so on-read hydration needs no macFUSE
   install (a signed Swift app extension, out of scope for a pure-TS CLI);
-- **continuous file-content sync** of *uncommitted* work between machines (boot
-  deliberately syncs the structural map, not a live file replica, a real-time
-  replication backend is a separate product surface).
+- **continuous file-content sync** of *uncommitted* work between machines (Boot
+  syncs layout and secrets, not live edits).

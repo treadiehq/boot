@@ -1,7 +1,7 @@
 {
   "name": "boot",
-  "version": "0.2.3",
-  "description": "Dropbox for ~/code — sync your workspace structure across machines, hydrate repos on access, and never build on a stale base.",
+  "version": "0.2.4",
+  "description": "Put the same repo layout on every machine. Repos appear instantly and clone when opened.",
   "type": "module",
   "bin": {
     "boot": "./dist/index.js"
