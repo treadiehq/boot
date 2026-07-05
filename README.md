@@ -26,13 +26,13 @@ Two promises, really:
 **macOS / Linux** (needs `curl`):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/treadiehq/boot/main/scripts/install.sh | bash
+curl -fsSL https://useboot.co/install.sh | bash
 ```
 
 **Windows** (PowerShell):
 
 ```powershell
-irm https://raw.githubusercontent.com/treadiehq/boot/main/scripts/install.ps1 | iex
+irm https://useboot.co/install.ps1 | iex
 ```
 
 Installs a standalone binary (macOS/Linux on x64+arm64, Windows on x64). Git is
@@ -43,7 +43,7 @@ required for boot's repo syncing. Update anytime with `boot update`.
 You need a private git repo to hold the map (a name like `code-map` works
 well). If it doesn't exist yet and you have the [GitHub CLI](https://cli.github.com)
 installed, boot offers to create it for you during setup. Otherwise create an
-empty private repo first on any host — your first sync seeds it.
+empty private repo first on any host, your first sync seeds it.
 
 Then one command sets up each machine. It links the workspace, creates a secret
 key, installs the shell hook and background daemon, and prints a health check:
