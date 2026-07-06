@@ -29,13 +29,13 @@ platform and puts it on your PATH. No Node or build step needed.
 **macOS / Linux:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/treadiehq/boot/main/scripts/install.sh | bash
+curl -fsSL https://useboot.co/install.sh | bash
 ```
 
 **Windows (PowerShell):**
 
 ```powershell
-irm https://raw.githubusercontent.com/treadiehq/boot/main/scripts/install.ps1 | iex
+irm https://useboot.co/install.ps1 | iex
 ```
 
 Binaries are published for macOS and Linux on `x64` and `arm64`, and Windows on
@@ -52,12 +52,12 @@ The installers honor a few environment overrides:
 
 ```bash
 # pin a specific version (macOS/Linux)
-BOOT_VERSION=v0.1.0 curl -fsSL https://raw.githubusercontent.com/treadiehq/boot/main/scripts/install.sh | bash
+BOOT_VERSION=v0.1.0 curl -fsSL https://useboot.co/install.sh | bash
 ```
 
 ```powershell
 # pin a specific version (Windows)
-$env:BOOT_VERSION = "v0.1.0"; irm https://raw.githubusercontent.com/treadiehq/boot/main/scripts/install.ps1 | iex
+$env:BOOT_VERSION = "v0.1.0"; irm https://useboot.co/install.ps1 | iex
 ```
 
 For development, build a binary with [Bun](https://bun.sh) or run from source
