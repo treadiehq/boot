@@ -113,6 +113,20 @@ describe.skipIf(!GIT_OK)("runFreshness", () => {
     expect(report.repos[0]?.status).toBe("up-to-date");
   });
 
+  it("reports fetch-failed instead of up-to-date when upstream refs cannot refresh", async () => {
+    const { remote } = await seedRemote("app");
+    const repoDir = path.join(root, "ws", "app");
+    clone(remote, repoDir);
+    git(repoDir, "remote", "set-url", "origin", path.join(root, "missing.git"));
+
+    const scan = await scanWorkspace(path.join(root, "ws"));
+    const report = await runFreshness(scan.repos, { fastForward: true });
+
+    expect(report.repos[0]?.status).toBe("fetch-failed");
+    expect(report.counts["fetch-failed"]).toBe(1);
+    expect(report.counts["up-to-date"]).toBe(0);
+  });
+
   it("never touches a dirty repo, even when behind", async () => {
     const { remote, publisher } = await seedRemote("app");
     const repoDir = path.join(root, "ws", "app");

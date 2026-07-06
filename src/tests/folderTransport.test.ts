@@ -42,6 +42,20 @@ describe("FolderTransport", () => {
     expect(existsSync(path.join(mapDir, "machines", "a.json"))).toBe(true);
   });
 
+  it("refuses to pull iCloud stubs before pruning local map files", async () => {
+    const folder = path.join(root, "shared");
+    await fs.mkdir(folder, { recursive: true });
+    await fs.writeFile(path.join(folder, "workspace.json.icloud"), "<plist></plist>");
+
+    const mapDir = path.join(root, "map");
+    await fs.mkdir(mapDir, { recursive: true });
+    await fs.writeFile(path.join(mapDir, "workspace.json"), '{"real":true}');
+
+    await expect(new FolderTransport(mapDir, folder).pull()).rejects.toThrow(/iCloud placeholder/);
+    expect(await fs.readFile(path.join(mapDir, "workspace.json"), "utf8")).toBe('{"real":true}');
+    expect(existsSync(path.join(mapDir, "workspace.json.icloud"))).toBe(false);
+  });
+
   it("push mirrors the local map dir back and reports whether anything changed", async () => {
     const folder = path.join(root, "shared");
     const mapDir = path.join(root, "map");
@@ -52,6 +66,18 @@ describe("FolderTransport", () => {
     expect(await t.push("msg")).toBe(true); // first publish
     expect(existsSync(path.join(folder, "workspace.json"))).toBe(true);
     expect(await t.push("msg")).toBe(false); // nothing changed
+  });
+
+  it("refuses to push local iCloud stubs into the shared folder", async () => {
+    const folder = path.join(root, "shared");
+    const mapDir = path.join(root, "map");
+    await fs.mkdir(mapDir, { recursive: true });
+    await fs.writeFile(path.join(mapDir, "workspace.json.icloud"), "<plist></plist>");
+
+    await expect(new FolderTransport(mapDir, folder).push("msg")).rejects.toThrow(
+      /iCloud placeholder/,
+    );
+    expect(existsSync(path.join(folder, "workspace.json.icloud"))).toBe(false);
   });
 
   it("push prunes files deleted locally", async () => {

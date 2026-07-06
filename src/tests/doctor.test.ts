@@ -10,6 +10,7 @@ function repo(overrides: Partial<DoctorRepo> = {}): DoctorRepo {
     dirty: false,
     remoteUrl: "git@github.com:dantelex2/kplane.git",
     currentBranch: "main",
+    intendedBranch: null,
     lastCommitDate: new Date("2026-06-20T00:00:00.000Z"),
     projectType: "node",
     detectedFiles: ["package.json", "pnpm-lock.yaml"],
@@ -49,6 +50,71 @@ describe("runDoctorChecks", () => {
     expect(report.warnings).toContain("infraone is dirty");
     expect(report.warnings).toContain("kplane is on branch agent-test instead of main/master");
     expect(report.warnings).toContain("local-experiment has no remote");
+  });
+
+  it("flags detached HEAD because the daemon cannot auto-update it", () => {
+    const report = runDoctorChecks({
+      ...base,
+      repos: [repo({ name: "release-checkout", currentBranch: null })],
+    });
+    expect(report.warnings).toContain(
+      "release-checkout is in detached HEAD; daemon cannot auto-update it",
+    );
+  });
+
+  it("flags repos with a remote but no upstream tracking branch", () => {
+    const report = runDoctorChecks({
+      ...base,
+      repos: [repo({ name: "no-upstream", currentBranch: "main", aheadBehind: null })],
+    });
+    expect(report.warnings).toContain(
+      "no-upstream has no upstream tracking branch; daemon cannot auto-update it",
+    );
+  });
+
+  it("does not add an upstream warning when a repo has no remote or is detached", () => {
+    const report = runDoctorChecks({
+      ...base,
+      repos: [
+        repo({ name: "no-remote", remoteUrl: null, aheadBehind: null }),
+        repo({ name: "detached", currentBranch: null, aheadBehind: null }),
+      ],
+    });
+    expect(report.warnings).toContain("no-remote has no remote");
+    expect(report.warnings).toContain("detached is in detached HEAD; daemon cannot auto-update it");
+    expect(report.warnings.some((w) => w.includes("no-remote has no upstream"))).toBe(false);
+    expect(report.warnings.some((w) => w.includes("detached has no upstream"))).toBe(false);
+  });
+
+  it("flags hydrated repos that are not on their intended branch", () => {
+    const report = runDoctorChecks({
+      ...base,
+      repos: [
+        repo({
+          name: "feature-app",
+          status: "hydrated",
+          currentBranch: "main",
+          intendedBranch: "feature-branch",
+        }),
+      ],
+    });
+    expect(report.warnings).toContain(
+      "feature-app is on branch main but was intended to be on feature-branch",
+    );
+  });
+
+  it("allows hydrated repos to be on an intended non-default branch", () => {
+    const report = runDoctorChecks({
+      ...base,
+      repos: [
+        repo({
+          status: "hydrated",
+          currentBranch: "feature-branch",
+          intendedBranch: "feature-branch",
+        }),
+      ],
+    });
+    expect(report.warnings).toEqual([]);
   });
 
   it("flags placeholders without a remote URL and counts them separately", () => {

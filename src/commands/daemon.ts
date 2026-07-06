@@ -35,6 +35,7 @@ function describeTick(summary: TickSummary): string {
   if (summary.behind > 0) parts.push(colors.yellow(`${summary.behind} behind`));
   if (summary.diverged > 0) parts.push(colors.yellow(`${summary.diverged} diverged`));
   if (summary.dirty > 0) parts.push(`${summary.dirty} dirty`);
+  if (summary.fetchFailed > 0) parts.push(colors.yellow(`${summary.fetchFailed} fetch failed`));
   return parts.join(", ");
 }
 
@@ -55,6 +56,7 @@ async function runTickAndRecord(root: string, options: SyncOptions): Promise<Tic
       behind: result.freshness.counts.behind,
       diverged: result.freshness.counts.diverged,
       dirty: result.freshness.counts.dirty,
+      fetchFailed: result.freshness.counts["fetch-failed"],
     };
   } catch (err) {
     summary = {
@@ -68,6 +70,7 @@ async function runTickAndRecord(root: string, options: SyncOptions): Promise<Tic
       behind: 0,
       diverged: 0,
       dirty: 0,
+      fetchFailed: 0,
       error: (err as Error).message,
     };
   }

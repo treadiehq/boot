@@ -15,6 +15,7 @@ export type FreshnessStatus =
   | "behind" // behind the upstream but not auto-advanced (not a default branch, etc.)
   | "diverged" // local and upstream have both moved — needs a manual merge/rebase
   | "dirty" // uncommitted changes, left untouched
+  | "fetch-failed" // could not refresh upstream refs
   | "no-upstream" // branch has no tracking ref
   | "detached" // not on a branch
   | "placeholder" // not hydrated yet — nothing to do
@@ -48,6 +49,7 @@ function emptyCounts(): Record<FreshnessStatus, number> {
     behind: 0,
     diverged: 0,
     dirty: 0,
+    "fetch-failed": 0,
     "no-upstream": 0,
     detached: 0,
     placeholder: 0,
@@ -66,7 +68,8 @@ async function assessRepo(
   if (!repo.currentBranch) return "detached";
 
   if (!options.skipFetch) {
-    await gitFetch(dir);
+    const fetched = await gitFetch(dir);
+    if (!fetched) return "fetch-failed";
   }
 
   const upstream = await gitUpstreamRef(dir);
@@ -114,7 +117,11 @@ export async function runFreshness(
     // Re-read counts for reporting (cheap, and reflects any fast-forward).
     let ahead = 0;
     let behind = 0;
-    if (isGitRepo(repo.absolutePath) && repo.hydrate.status !== "placeholder") {
+    if (
+      status !== "fetch-failed" &&
+      isGitRepo(repo.absolutePath) &&
+      repo.hydrate.status !== "placeholder"
+    ) {
       const ab = await gitAheadBehind(repo.absolutePath);
       if (ab) {
         ahead = ab.ahead;

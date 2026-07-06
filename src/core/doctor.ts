@@ -19,6 +19,8 @@ export interface DoctorRepo {
   dirty: boolean;
   remoteUrl: string | null;
   currentBranch: string | null;
+  /** Branch recorded in .boot/repo.json for hydrated placeholders. */
+  intendedBranch: string | null;
   lastCommitDate: Date | null;
   projectType: ProjectType;
   detectedFiles: string[];
@@ -80,7 +82,15 @@ export function runDoctorChecks(input: DoctorInput): DoctorReport {
     if (!repo.remoteUrl) {
       warnings.push(`${repo.name} has no remote`);
     }
-    if (repo.currentBranch && !branches.has(repo.currentBranch)) {
+    if (repo.currentBranch === null) {
+      warnings.push(`${repo.name} is in detached HEAD; daemon cannot auto-update it`);
+    }
+    if (repo.intendedBranch && repo.currentBranch !== repo.intendedBranch) {
+      const current = repo.currentBranch ?? "(detached)";
+      warnings.push(
+        `${repo.name} is on branch ${current} but was intended to be on ${repo.intendedBranch}`,
+      );
+    } else if (!repo.intendedBranch && repo.currentBranch && !branches.has(repo.currentBranch)) {
       warnings.push(`${repo.name} is on branch ${repo.currentBranch} instead of ${branchLabel}`);
     }
     // Ahead *and* behind: the daemon can't fast-forward this repo, so it will
@@ -90,6 +100,9 @@ export function runDoctorChecks(input: DoctorInput): DoctorReport {
       warnings.push(
         `${repo.name} has diverged from its upstream (${repo.aheadBehind.ahead} ahead, ${repo.aheadBehind.behind} behind) — merge or rebase to reconcile`,
       );
+    }
+    if (repo.currentBranch !== null && repo.remoteUrl !== null && repo.aheadBehind === null) {
+      warnings.push(`${repo.name} has no upstream tracking branch; daemon cannot auto-update it`);
     }
     if (repo.lastCommitDate) {
       const ageDays = Math.floor((now.getTime() - repo.lastCommitDate.getTime()) / DAY_MS);

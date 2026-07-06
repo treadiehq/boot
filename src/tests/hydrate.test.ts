@@ -16,6 +16,7 @@ vi.mock("../core/git", async (importOriginal) => {
 });
 
 import { checkoutBranch, cloneRepo } from "../core/git";
+import { hydratePlaceholder } from "../core/hydrate";
 import { hydrateCommand } from "../commands/hydrate";
 import {
   buildPlaceholderMeta,
@@ -58,6 +59,19 @@ async function makePlaceholder(rel: string, remoteUrl: string | null): Promise<s
   return repoDir;
 }
 
+async function captureLogs(fn: () => Promise<void>): Promise<string> {
+  const lines: string[] = [];
+  const spy = vi.spyOn(console, "log").mockImplementation((message?: unknown) => {
+    lines.push(String(message ?? ""));
+  });
+  try {
+    await fn();
+  } finally {
+    spy.mockRestore();
+  }
+  return lines.join("\n");
+}
+
 describe("hydrateCommand", () => {
   it("clones into the placeholder, preserves .boot, and marks hydrated", async () => {
     const repoDir = await makePlaceholder("apps/kplane", "git@example.com:kplane.git");
@@ -84,6 +98,38 @@ describe("hydrateCommand", () => {
     // The preserved placeholder folder is excluded so the repo stays clean.
     const exclude = await fs.readFile(path.join(repoDir, ".git", "info", "exclude"), "utf8");
     expect(exclude).toContain(`${PLACEHOLDER_DIR}/`);
+  });
+
+  it("reports checkout failure without claiming the repo is ready to work in", async () => {
+    const repoDir = await makePlaceholder("apps/feature", "git@example.com:feature.git");
+    cloneMock.mockImplementation(async (_url: string, target: string) => {
+      await fs.mkdir(path.join(target, ".git"), { recursive: true });
+      await fs.writeFile(path.join(target, "README.md"), "# feature\n");
+    });
+    checkoutMock.mockRejectedValue(new Error("branch not found"));
+
+    const output = await captureLogs(() => hydrateCommand(repoDir));
+
+    expect(output).toContain("could not checkout the recorded branch");
+    expect(output).not.toContain("start working");
+  });
+
+  it("returns a distinct outcome when clone succeeds but checkout fails", async () => {
+    const repoDir = await makePlaceholder("apps/mismatch", "git@example.com:mismatch.git");
+    const failedBranches: string[] = [];
+    cloneMock.mockImplementation(async (_url: string, target: string) => {
+      await fs.mkdir(path.join(target, ".git"), { recursive: true });
+      await fs.writeFile(path.join(target, "README.md"), "# mismatch\n");
+    });
+    checkoutMock.mockRejectedValue(new Error("branch not found"));
+
+    const outcome = await hydratePlaceholder(repoDir, {
+      onCheckoutFailed: (branch) => failedBranches.push(branch),
+    });
+
+    expect(outcome).toBe("hydrated-checkout-failed");
+    expect(failedBranches).toEqual(["main"]);
+    expect((await readPlaceholder(repoDir))?.hydrateStatus).toBe("hydrated");
   });
 
   it("is a no-op when the folder is already a real git repo", async () => {

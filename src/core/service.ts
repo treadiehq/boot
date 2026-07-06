@@ -97,6 +97,10 @@ function shellQuote(value: string): string {
   return /[\s"\\]/.test(value) ? `"${value.replace(/(["\\])/g, "\\$1")}"` : value;
 }
 
+function systemdQuote(value: string): string {
+  return `"${value.replace(/(["\\])/g, "\\$1")}"`;
+}
+
 /** Quote a Windows command-line argument when it contains whitespace. */
 function winQuote(value: string): string {
   return /\s/.test(value) ? `"${value}"` : value;
@@ -149,7 +153,7 @@ Wants=network-online.target
 Type=simple
 ExecStart=${exec}
 WorkingDirectory=${spec.root}
-Environment=PATH=${spec.pathEnv}
+Environment=${systemdQuote(`PATH=${spec.pathEnv}`)}
 Restart=always
 RestartSec=10
 StandardOutput=append:${spec.logFile}

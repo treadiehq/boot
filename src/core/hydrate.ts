@@ -9,7 +9,7 @@ import {
   type PlaceholderMeta,
 } from "./placeholder";
 
-export type HydrateOutcome = "hydrated" | "already-hydrated";
+export type HydrateOutcome = "hydrated" | "hydrated-checkout-failed" | "already-hydrated";
 
 /** Optional callbacks so callers can report progress without the core logging itself. */
 export interface HydrateHooks {
@@ -70,11 +70,13 @@ export async function hydratePlaceholder(
   await fs.rm(tmpRoot, { recursive: true, force: true });
   hooks.onCloned?.(meta.remoteUrl);
 
+  let checkoutFailed = false;
   if (meta.branch) {
     try {
       await checkoutBranch(repoDir, meta.branch);
       hooks.onCheckedOut?.(meta.branch);
     } catch {
+      checkoutFailed = true;
       hooks.onCheckoutFailed?.(meta.branch);
     }
   }
@@ -84,5 +86,5 @@ export async function hydratePlaceholder(
   await writePlaceholder(repoDir, { ...meta, hydrateStatus: "hydrated" });
   hooks.onUpdated?.();
 
-  return "hydrated";
+  return checkoutFailed ? "hydrated-checkout-failed" : "hydrated";
 }

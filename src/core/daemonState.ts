@@ -17,6 +17,7 @@ export const tickSummarySchema = z.object({
   behind: z.number(),
   diverged: z.number(),
   dirty: z.number(),
+  fetchFailed: z.number().default(0),
   error: z.string().optional(),
 });
 

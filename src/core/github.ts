@@ -11,9 +11,9 @@ import { execa } from "execa";
 export function parseGitHubSlug(remoteUrl: string): string | null {
   const url = remoteUrl.trim();
   const patterns = [
-    /^git@github\.com:([^/]+)\/(.+?)(?:\.git)?\/?$/i,
-    /^ssh:\/\/git@github\.com\/([^/]+)\/(.+?)(?:\.git)?\/?$/i,
-    /^https?:\/\/(?:www\.)?github\.com\/([^/]+)\/(.+?)(?:\.git)?\/?$/i,
+    /^git@github\.com:([^/]+)\/([^/]+?)(?:\.git)?\/?$/i,
+    /^ssh:\/\/git@(?:ssh\.)?github\.com(?::\d+)?\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/i,
+    /^https?:\/\/(?:www\.)?github\.com\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/i,
   ];
   for (const re of patterns) {
     const match = url.match(re);

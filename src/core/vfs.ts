@@ -111,8 +111,9 @@ export class OverlayFs {
   underlying(mountPath: string): string {
     const rel = mountPath.replace(/^[/\\]+/, "");
     const resolved = path.resolve(this.root, rel);
+    const rootPrefix = this.root.endsWith(path.sep) ? this.root : `${this.root}${path.sep}`;
     // Never let `..` escape the workspace root.
-    if (resolved !== this.root && !resolved.startsWith(`${this.root}${path.sep}`)) {
+    if (resolved !== this.root && !resolved.startsWith(rootPrefix)) {
       const err: NodeJS.ErrnoException = new Error(`path escapes workspace: ${mountPath}`);
       err.code = "EACCES";
       throw err;
@@ -140,7 +141,7 @@ export class OverlayFs {
     if (!job) {
       job = hydratePlaceholder(target)
         .then((outcome) => {
-          if (outcome === "hydrated") this.hooks.onHydrate?.(target);
+          if (outcome !== "already-hydrated") this.hooks.onHydrate?.(target);
         })
         .catch((err: Error) => {
           this.hooks.onError?.(err);

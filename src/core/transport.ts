@@ -62,6 +62,7 @@ export class FolderTransport implements MapTransport {
 
   async pull(): Promise<void> {
     if (existsSync(this.folder)) {
+      await assertNoIcloudStubs(this.folder, "pull from synced folder");
       await mirrorTree(this.folder, this.mapDir);
     } else {
       await fs.mkdir(this.folder, { recursive: true });
@@ -70,6 +71,7 @@ export class FolderTransport implements MapTransport {
 
   async push(_message: string): Promise<boolean> {
     await fs.mkdir(this.folder, { recursive: true });
+    await assertNoIcloudStubs(this.mapDir, "push local map");
     return mirrorTree(this.mapDir, this.folder);
   }
 }
@@ -137,6 +139,26 @@ async function listFilesRel(dir: string): Promise<string[]> {
   }
   await walk("");
   return out;
+}
+
+function isIcloudStub(rel: string): boolean {
+  return path.basename(rel).endsWith(".icloud");
+}
+
+function formatRelList(files: string[]): string {
+  const shown = files.slice(0, 5).join(", ");
+  const remaining = files.length - 5;
+  return remaining > 0 ? `${shown}, and ${remaining} more` : shown;
+}
+
+async function assertNoIcloudStubs(dir: string, action: string): Promise<void> {
+  const stubs = (await listFilesRel(dir)).filter(isIcloudStub).sort();
+  if (stubs.length === 0) return;
+
+  throw new Error(
+    `Refusing to ${action}: found iCloud placeholder file(s) in ${dir}: ` +
+      `${formatRelList(stubs)}. Wait for iCloud to download the files, then retry.`,
+  );
 }
 
 /**

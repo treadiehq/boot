@@ -102,13 +102,22 @@ describe("renderers", () => {
     );
     expect(unit).toContain("Restart=always");
     expect(unit).toContain("WantedBy=default.target");
-    expect(unit).toContain("Environment=PATH=/opt/homebrew/bin:/usr/bin");
+    expect(unit).toContain('Environment="PATH=/opt/homebrew/bin:/usr/bin"');
   });
 
   it("quotes systemd exec arguments that contain spaces", () => {
     const withSpace = { ...spec("/home/me/my code"), root: "/home/me/my code" };
     const unit = renderSystemdUnit("/home/me/my code", withSpace);
     expect(unit).toContain('"/home/me/my code"');
+  });
+
+  it("quotes systemd PATH assignments that contain spaces", () => {
+    const withSpace = {
+      ...spec("/home/me/code"),
+      pathEnv: "/home/John Doe/.local/bin:/usr/bin",
+    };
+    const unit = renderSystemdUnit("/home/me/code", withSpace);
+    expect(unit).toContain('Environment="PATH=/home/John Doe/.local/bin:/usr/bin"');
   });
 
   it("renders a Task Scheduler XML that runs the boot binary directly", () => {

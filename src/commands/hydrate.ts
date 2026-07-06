@@ -22,5 +22,10 @@ export async function hydrateCommand(repoPath: string): Promise<void> {
   }
 
   if (branch) logger.info(colors.dim(`  on ${branch}`));
+  if (outcome === "hydrated-checkout-failed") {
+    logger.warn("could not checkout the recorded branch; repo is on the clone default branch");
+    logger.next(`cd ${label}, check the branch, and run \`boot doctor\` for details.`);
+    return;
+  }
   logger.next(`cd ${label} and start working.`);
 }

@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {
+  DAEMON_STATE_FILE,
   clearDaemonPid,
   isDaemonRunning,
   pidAlive,
@@ -10,6 +11,7 @@ import {
   writeDaemonState,
   type DaemonState,
 } from "../core/daemonState";
+import { mapPaths } from "../core/map";
 
 let root: string;
 
@@ -38,6 +40,34 @@ describe("daemon state", () => {
 
   it("returns null when no state exists", async () => {
     expect(await readDaemonState(root)).toBeNull();
+  });
+
+  it("defaults fetchFailed when reading older state files", async () => {
+    const bootDir = mapPaths(root).bootDir;
+    await fs.mkdir(bootDir, { recursive: true });
+    await fs.writeFile(
+      path.join(bootDir, DAEMON_STATE_FILE),
+      `${JSON.stringify({
+        ...sample,
+        lastTickAt: "2024-01-02T00:00:00.000Z",
+        lastTick: {
+          ok: true,
+          at: "2024-01-02T00:00:00.000Z",
+          repoCount: 1,
+          placeholders: 0,
+          cloned: 0,
+          pushed: true,
+          updated: 0,
+          behind: 0,
+          diverged: 0,
+          dirty: 0,
+        },
+      })}\n`,
+      "utf8",
+    );
+
+    const loaded = await readDaemonState(root);
+    expect(loaded?.lastTick?.fetchFailed).toBe(0);
   });
 
   it("clearDaemonPid nulls the pid but keeps the rest", async () => {

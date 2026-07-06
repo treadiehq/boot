@@ -3,6 +3,7 @@ import path from "node:path";
 import { ensureGitAvailable, getLastCommitDate, gitAheadBehind } from "../core/git";
 import { runDoctorChecks, SUSPICIOUS_GENERATED_DIRS, type DoctorRepo } from "../core/doctor";
 import { collectHealth } from "../core/health";
+import { readPlaceholder } from "../core/placeholder";
 import { scanWorkspace } from "../core/scanner";
 import { colors, logger } from "../ui/logger";
 import { renderSetupHealth } from "../ui/health";
@@ -37,11 +38,13 @@ export async function doctorCommand(
   const repos: DoctorRepo[] = await Promise.all(
     result.repos.map(async (repo) => {
       const isPlaceholder = repo.hydrate.status === "placeholder";
-      const [lastCommitDate, aheadBehind] = isPlaceholder
-        ? [null, null]
+      const isHydratedPlaceholder = repo.hydrate.status === "hydrated";
+      const [lastCommitDate, aheadBehind, placeholderMeta] = isPlaceholder
+        ? [null, null, null]
         : await Promise.all([
             getLastCommitDate(repo.absolutePath),
             gitAheadBehind(repo.absolutePath),
+            isHydratedPlaceholder ? readPlaceholder(repo.absolutePath) : Promise.resolve(null),
           ]);
       return {
         name: repo.name,
@@ -50,6 +53,7 @@ export async function doctorCommand(
         dirty: repo.dirty,
         remoteUrl: repo.remoteUrl,
         currentBranch: repo.currentBranch,
+        intendedBranch: placeholderMeta?.branch ?? null,
         lastCommitDate,
         projectType: repo.projectType,
         detectedFiles: repo.detectedFiles,

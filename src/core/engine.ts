@@ -95,6 +95,7 @@ function runFreshnessEmptyCounts(): FreshnessReport["counts"] {
     behind: 0,
     diverged: 0,
     dirty: 0,
+    "fetch-failed": 0,
     "no-upstream": 0,
     detached: 0,
     placeholder: 0,

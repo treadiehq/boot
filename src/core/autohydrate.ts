@@ -64,5 +64,5 @@ export async function autoHydrate(
   if (!target) return { hydrated: false };
 
   const outcome = await hydratePlaceholder(target, options.hooks);
-  return { hydrated: outcome === "hydrated", repoDir: target, outcome };
+  return { hydrated: outcome !== "already-hydrated", repoDir: target, outcome };
 }

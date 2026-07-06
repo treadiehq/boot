@@ -98,6 +98,14 @@ describe("OverlayFs.underlying", () => {
     expect(overlay.underlying("/apps/web")).toBe(path.resolve(root, "apps/web"));
   });
 
+  it("accepts valid paths when the workspace is the filesystem root", () => {
+    const filesystemRoot = path.parse(process.cwd()).root;
+    const overlay = new OverlayFs(filesystemRoot);
+    expect(overlay.underlying("/boot-root-mount-test")).toBe(
+      path.resolve(filesystemRoot, "boot-root-mount-test"),
+    );
+  });
+
   it("rejects paths that escape the workspace root", () => {
     const overlay = new OverlayFs(root);
     expect(() => overlay.underlying("/../../etc/passwd")).toThrow(/escapes workspace/);

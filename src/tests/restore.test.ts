@@ -3,10 +3,25 @@ import fs from "node:fs/promises";
 import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+
+vi.mock("../core/git", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../core/git")>();
+  return {
+    ...actual,
+    ensureGitAvailable: vi.fn(async () => {}),
+    cloneRepo: vi.fn(),
+    checkoutBranch: vi.fn(async () => {}),
+  };
+});
+
+import { checkoutBranch, cloneRepo } from "../core/git";
 import { buildManifest, writeManifest, type ManifestConfig, type RepoEntry } from "../core/manifest";
 import { DEFAULT_IGNORE_RULES } from "../core/ignore";
 import { isPlaceholder, readPlaceholder, placeholderPaths } from "../core/placeholder";
 import { restoreCommand } from "../commands/restore";
+
+const cloneMock = vi.mocked(cloneRepo);
+const checkoutMock = vi.mocked(checkoutBranch);
 
 let dir: string;
 let logs: string[];
@@ -14,6 +29,9 @@ let logs: string[];
 beforeEach(async () => {
   dir = await fs.mkdtemp(path.join(os.tmpdir(), "boot-restore-"));
   logs = [];
+  cloneMock.mockReset();
+  checkoutMock.mockReset();
+  checkoutMock.mockResolvedValue(undefined);
   vi.spyOn(console, "log").mockImplementation((msg?: unknown) => {
     logs.push(String(msg ?? ""));
   });
@@ -148,5 +166,17 @@ describe("restore (eager) safety — no cloning required", () => {
     // The sentinel proves the existing repo was left untouched (not cloned over).
     expect(await fs.readFile(path.join(repoDir, "sentinel.txt"), "utf8")).toBe("keep me");
     expect(logs.join("\n")).toMatch(/already exists/);
+  });
+
+  it("does not log repo creation before clone succeeds", async () => {
+    const file = await manifestFile([repo({ relativePath: "apps/kplane" })]);
+    const target = path.join(dir, "restored");
+    cloneMock.mockRejectedValue(new Error("git clone failed: authentication failed"));
+
+    await restoreCommand(file, target);
+
+    expect(existsSync(path.join(target, "apps"))).toBe(true);
+    expect(existsSync(path.join(target, "apps/kplane"))).toBe(false);
+    expect(logs.join("\n")).not.toContain("created apps/kplane");
   });
 });

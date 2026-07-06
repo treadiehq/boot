@@ -59,8 +59,11 @@ export async function cdCommand(query = "", options: CdOptions = {}): Promise<vo
   let hydrated = false;
   if (isPlaceholder(target.absolutePath)) {
     note(colors.dim(`hydrating ${target.relativePath}…`));
-    await hydratePlaceholder(target.absolutePath);
+    const outcome = await hydratePlaceholder(target.absolutePath);
     hydrated = true;
+    if (outcome === "hydrated-checkout-failed") {
+      note(colors.yellow(`could not checkout the recorded branch for ${target.relativePath}`));
+    }
   }
 
   emit(target, hydrated, options);

@@ -29,6 +29,8 @@ describe("parseGitHubSlug", () => {
     expect(parseGitHubSlug("git@github.com:me/code-map.git")).toBe("me/code-map");
     expect(parseGitHubSlug("git@github.com:me/code-map")).toBe("me/code-map");
     expect(parseGitHubSlug("ssh://git@github.com/me/code-map.git")).toBe("me/code-map");
+    expect(parseGitHubSlug("ssh://git@github.com:22/me/code-map.git")).toBe("me/code-map");
+    expect(parseGitHubSlug("ssh://git@ssh.github.com:443/me/code-map.git")).toBe("me/code-map");
     expect(parseGitHubSlug("https://github.com/me/code-map")).toBe("me/code-map");
     expect(parseGitHubSlug("https://github.com/me/code-map.git")).toBe("me/code-map");
   });
@@ -37,6 +39,13 @@ describe("parseGitHubSlug", () => {
     expect(parseGitHubSlug("git@gitlab.com:me/code-map.git")).toBeNull();
     expect(parseGitHubSlug("https://bitbucket.org/me/code-map")).toBeNull();
     expect(parseGitHubSlug("/some/local/path")).toBeNull();
+  });
+
+  it("returns null for GitHub web URLs with extra path components", () => {
+    expect(parseGitHubSlug("https://github.com/me/code-map/tree/main")).toBeNull();
+    expect(parseGitHubSlug("https://github.com/me/code-map/issues/123")).toBeNull();
+    expect(parseGitHubSlug("https://github.com/me/code-map/pull/456")).toBeNull();
+    expect(parseGitHubSlug("https://github.com/me/code-map/blob/main/README.md")).toBeNull();
   });
 });
 

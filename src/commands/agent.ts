@@ -91,11 +91,14 @@ export async function agentCommand(
       const repo = targets[i]!;
       try {
         const outcome = await hydratePlaceholder(repo.absolutePath);
-        if (outcome === "hydrated") {
+        if (outcome === "hydrated" || outcome === "hydrated-checkout-failed") {
           hydrated += 1;
           logger.info(
             `${stepPrefix(i + 1, targets.length)} hydrated ${colors.cyan(repo.relativePath)}`,
           );
+          if (outcome === "hydrated-checkout-failed") {
+            logger.warn(`${repo.relativePath}: could not checkout the recorded branch`);
+          }
         }
       } catch (err) {
         logger.error(`failed to hydrate ${repo.relativePath}: ${(err as Error).message}`);

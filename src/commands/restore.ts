@@ -114,11 +114,9 @@ async function restoreEager(target: string, repos: RepoEntry[]): Promise<void> {
       continue;
     }
 
-    logger.success(`created ${repo.relativePath}`);
-
     try {
       await cloneRepo(repo.remoteUrl, repoPath);
-      logger.success(`cloned ${repo.remoteUrl}`);
+      logger.success(`cloned ${repo.remoteUrl} into ${repo.relativePath}`);
     } catch (err) {
       logger.error((err as Error).message);
       warnings += 1;
