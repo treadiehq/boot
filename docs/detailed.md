@@ -99,7 +99,7 @@ git push --follow-tags
 
 > The optional FUSE `mount` feature relies on the native `fuse-native` addon,
 > which isn't bundled into the static binary. `boot mount` prints install help in
-> the binary build; the rest of Boot (sync, hydrate, daemon, shell hook) works
+> the binary build; the rest of Boot (sync, clone, daemon, shell hook) works
 > fully without it.
 
 ## Set Up A Machine
@@ -144,7 +144,7 @@ boot export ~/code                    # save a snapshot file (boot-workspace.jso
 boot list boot-workspace.json         # see what's inside a snapshot
 boot import boot-workspace.json /tmp/code --lazy   # recreate it with placeholders
 boot hydrate /tmp/code/apps/kplane    # clone one placeholder
-boot status ~/code                    # what's hydrated, what's still a placeholder
+boot status ~/code                    # what's cloned, what's still a placeholder
 boot doctor ~/code                    # health warnings
 ```
 
@@ -260,15 +260,15 @@ placeholder in each repo folder:
 
 ```text
 apps/kplane/.boot/repo.json     # name, relativePath, remoteUrl, branch, lastCommit, hydrateStatus, createdAt
-apps/kplane/.boot/README.md     # how to hydrate this repo
+apps/kplane/.boot/README.md     # how to clone this repo
 ```
 
-Run `boot hydrate apps/kplane` to clone the real repo into that folder. Hydration
-clones into a temp directory first, then moves the contents in (preserving
-`.boot/`), checks out the recorded branch, updates `hydrateStatus` to
-`hydrated`, and adds `.boot/` to the repo's local `.git/info/exclude` so the
-clone stays clean. It never overwrites an existing repo, and leaves the
-placeholder intact if the clone fails.
+Run `boot hydrate apps/kplane` to clone the real repo into that folder. It clones
+into a temp directory first, then moves the contents in (preserving `.boot/`),
+checks out the recorded branch, updates `hydrateStatus` to `hydrated`, and adds
+`.boot/` to the repo's local `.git/info/exclude` so the clone stays clean. It
+never overwrites an existing repo, and leaves the placeholder intact if the
+clone fails.
 
 ## Syncing the map across machines
 
@@ -608,7 +608,7 @@ pnpm qa             # full CLI workflow smoke test
 
 ## Not yet
 
-- a native **macOS File Provider** extension so on-read hydration needs no macFUSE
+- a native **macOS File Provider** extension so on-read cloning needs no macFUSE
   install (a signed Swift app extension, out of scope for a pure-TS CLI);
 - **continuous file-content sync** of *uncommitted* work between machines (Boot
   syncs layout and secrets, not live edits).
