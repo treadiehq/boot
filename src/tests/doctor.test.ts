@@ -11,6 +11,7 @@ function repo(overrides: Partial<DoctorRepo> = {}): DoctorRepo {
     remoteUrl: "git@github.com:dantelex2/kplane.git",
     currentBranch: "main",
     intendedBranch: null,
+    placeholderMetadataInvalid: false,
     lastCommitDate: new Date("2026-06-20T00:00:00.000Z"),
     projectType: "node",
     detectedFiles: ["package.json", "pnpm-lock.yaml"],
@@ -115,6 +116,23 @@ describe("runDoctorChecks", () => {
       ],
     });
     expect(report.warnings).toEqual([]);
+  });
+
+  it("reports invalid metadata for a hydrated placeholder", () => {
+    const report = runDoctorChecks({
+      ...base,
+      repos: [
+        repo({
+          relativePath: "apps/broken",
+          status: "hydrated",
+          currentBranch: "feature-branch",
+          placeholderMetadataInvalid: true,
+        }),
+      ],
+    });
+    expect(report.warnings).toEqual([
+      "apps/broken/.boot/repo.json is invalid; placeholder branch checks were skipped",
+    ]);
   });
 
   it("flags placeholders without a remote URL and counts them separately", () => {

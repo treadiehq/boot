@@ -1,6 +1,6 @@
 {
   "name": "boot",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "Put the same repo layout on every machine. Repos appear instantly and clone when opened.",
   "type": "module",
   "bin": {

@@ -39,12 +39,17 @@ export async function doctorCommand(
     result.repos.map(async (repo) => {
       const isPlaceholder = repo.hydrate.status === "placeholder";
       const isHydratedPlaceholder = repo.hydrate.status === "hydrated";
-      const [lastCommitDate, aheadBehind, placeholderMeta] = isPlaceholder
-        ? [null, null, null]
+      const placeholderRead = isHydratedPlaceholder
+        ? readPlaceholder(repo.absolutePath)
+            .then((meta) => ({ meta, invalid: false }))
+            .catch(() => ({ meta: null, invalid: true }))
+        : Promise.resolve({ meta: null, invalid: false });
+      const [lastCommitDate, aheadBehind, placeholder] = isPlaceholder
+        ? [null, null, { meta: null, invalid: false }]
         : await Promise.all([
             getLastCommitDate(repo.absolutePath),
             gitAheadBehind(repo.absolutePath),
-            isHydratedPlaceholder ? readPlaceholder(repo.absolutePath) : Promise.resolve(null),
+            placeholderRead,
           ]);
       return {
         name: repo.name,
@@ -53,7 +58,8 @@ export async function doctorCommand(
         dirty: repo.dirty,
         remoteUrl: repo.remoteUrl,
         currentBranch: repo.currentBranch,
-        intendedBranch: placeholderMeta?.branch ?? null,
+        intendedBranch: placeholder.meta?.branch ?? null,
+        placeholderMetadataInvalid: placeholder.invalid,
         lastCommitDate,
         projectType: repo.projectType,
         detectedFiles: repo.detectedFiles,

@@ -21,6 +21,8 @@ export interface DoctorRepo {
   currentBranch: string | null;
   /** Branch recorded in .boot/repo.json for hydrated placeholders. */
   intendedBranch: string | null;
+  /** Whether a hydrated repo's .boot/repo.json exists but could not be parsed. */
+  placeholderMetadataInvalid: boolean;
   lastCommitDate: Date | null;
   projectType: ProjectType;
   detectedFiles: string[];
@@ -66,6 +68,12 @@ export function runDoctorChecks(input: DoctorInput): DoctorReport {
   }
 
   for (const repo of input.repos) {
+    if (repo.placeholderMetadataInvalid) {
+      warnings.push(
+        `${repo.relativePath}/.boot/repo.json is invalid; placeholder branch checks were skipped`,
+      );
+    }
+
     if (repo.status === "placeholder") {
       placeholdersChecked += 1;
       if (!repo.remoteUrl) {
@@ -85,13 +93,15 @@ export function runDoctorChecks(input: DoctorInput): DoctorReport {
     if (repo.currentBranch === null) {
       warnings.push(`${repo.name} is in detached HEAD; daemon cannot auto-update it`);
     }
-    if (repo.intendedBranch && repo.currentBranch !== repo.intendedBranch) {
-      const current = repo.currentBranch ?? "(detached)";
-      warnings.push(
-        `${repo.name} is on branch ${current} but was intended to be on ${repo.intendedBranch}`,
-      );
-    } else if (!repo.intendedBranch && repo.currentBranch && !branches.has(repo.currentBranch)) {
-      warnings.push(`${repo.name} is on branch ${repo.currentBranch} instead of ${branchLabel}`);
+    if (!repo.placeholderMetadataInvalid) {
+      if (repo.intendedBranch && repo.currentBranch !== repo.intendedBranch) {
+        const current = repo.currentBranch ?? "(detached)";
+        warnings.push(
+          `${repo.name} is on branch ${current} but was intended to be on ${repo.intendedBranch}`,
+        );
+      } else if (!repo.intendedBranch && repo.currentBranch && !branches.has(repo.currentBranch)) {
+        warnings.push(`${repo.name} is on branch ${repo.currentBranch} instead of ${branchLabel}`);
+      }
     }
     // Ahead *and* behind: the daemon can't fast-forward this repo, so it will
     // quietly go stale until the user merges or rebases. Surface it.

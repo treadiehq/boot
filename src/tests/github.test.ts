@@ -57,6 +57,12 @@ describe("isRepoNotFoundError", () => {
     expect(isRepoNotFoundError("Permission denied (publickey).")).toBe(false);
     expect(isRepoNotFoundError("Could not resolve hostname github.com")).toBe(false);
   });
+
+  it("does not treat a missing credential helper as a missing repository", () => {
+    const detail = `/nonexistent/path/to/helper get: 1: /nonexistent/path/to/helper: not found
+fatal: could not read Username for 'https://github.com': terminal prompts disabled`;
+    expect(isRepoNotFoundError(detail)).toBe(false);
+  });
 });
 
 describe("ensureMapRemoteExists", () => {
@@ -79,6 +85,17 @@ describe("ensureMapRemoteExists", () => {
   it("leaves auth/network failures for clone to report", async () => {
     probeMock.mockResolvedValue({ ok: false, detail: "Permission denied (publickey)." });
     await ensureMapRemoteExists(remote);
+    expect(ghCreateMock).not.toHaveBeenCalled();
+  });
+
+  it("does not create a repo when the credential helper is missing", async () => {
+    probeMock.mockResolvedValue({
+      ok: false,
+      detail: `/nonexistent/path/to/helper get: 1: /nonexistent/path/to/helper: not found
+fatal: could not read Username for 'https://github.com': terminal prompts disabled`,
+    });
+    await ensureMapRemoteExists(remote, { yes: true });
+    expect(ghAvailableMock).not.toHaveBeenCalled();
     expect(ghCreateMock).not.toHaveBeenCalled();
   });
 

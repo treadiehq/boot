@@ -28,7 +28,13 @@ export function parseGitHubSlug(remoteUrl: string): string | null {
  * phrasing GitHub, GitLab, and Bitbucket use.
  */
 export function isRepoNotFoundError(detail: string): boolean {
-  return /not found|does not exist|could not be found/i.test(detail);
+  const repoNotFoundPatterns = [
+    /^(?:(?:ERROR|remote):\s*)?Repository not found\.?\s*$/im,
+    /^remote:\s+.*\bproject\b.*\bcould not be found\b.*$/im,
+    /^(?:fatal:\s+)?repository\b.*\bdoes not exist\.?\s*$/im,
+    /^fatal:\s+repository\b.*\bnot found\.?\s*$/im,
+  ];
+  return repoNotFoundPatterns.some((pattern) => pattern.test(detail));
 }
 
 /** Whether the GitHub CLI is installed and runnable. */
