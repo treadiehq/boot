@@ -148,7 +148,7 @@ describe.skipIf(!GIT_OK)("E2E: init → scan → list → lazy restore → statu
 
   it("lazy restore creates placeholders without cloning", async () => {
     const out = await capture(() => restoreCommand(manifestPath, restorePath, { lazy: true }));
-    expect(out).toMatch(/Lazy restore complete/);
+    expect(out).toContain("Snapshot restored.");
 
     const metaA = await readPlaceholder(path.join(restorePath, "apps/repo-a"));
     expect(metaA?.hydrateStatus).toBe("placeholder");
@@ -163,17 +163,17 @@ describe.skipIf(!GIT_OK)("E2E: init → scan → list → lazy restore → statu
 
   it("status shows placeholders before hydration", async () => {
     const out = await capture(() => statusCommand(restorePath));
-    expect(out).toContain("Placeholders:");
+    expect(out).toContain("Repository placeholders:");
     expect(out).toContain("apps/repo-a");
     expect(out).toContain("old/repo-b");
-    expect(out).toContain("Placeholders: 2");
+    expect(out).toContain("Repository placeholders: 2");
   });
 
   it("hydrate clones a placeholder and marks it hydrated", async () => {
     const repoDir = path.join(restorePath, "apps/repo-a");
     const out = await capture(() => hydrateCommand(repoDir));
-    expect(out).toMatch(/hydrating/);
-    expect(out).toMatch(/start working/);
+    expect(out).toContain("cloning");
+    expect(out).toContain("Open the repository:");
 
     await expect(fs.stat(path.join(repoDir, ".git"))).resolves.toBeTruthy();
     await expect(fs.readFile(path.join(repoDir, "package.json"), "utf8")).resolves.toContain(
@@ -190,15 +190,15 @@ describe.skipIf(!GIT_OK)("E2E: init → scan → list → lazy restore → statu
 
   it("status reflects the hydrated repo afterwards", async () => {
     const out = await capture(() => statusCommand(restorePath));
-    expect(out).toContain("Hydrated:");
+    expect(out).toContain("Cloned repositories:");
     expect(out).toContain("apps/repo-a");
-    expect(out).toContain("Hydrated repos: 1");
-    expect(out).toContain("Placeholders: 1");
+    expect(out).toContain("Cloned repositories: 1");
+    expect(out).toContain("Repository placeholders: 1");
   });
 
   it("doctor reports useful warnings", async () => {
     const out = await capture(() => doctorCommand(restorePath));
-    expect(out).toMatch(/Doctor/);
+    expect(out).toContain("workspace check");
     expect(out).toContain(`workspace has no ${IGNORE_FILE_NAME}`);
     expect(out).toMatch(/old\/repo-b is a placeholder with no remote URL/);
   });

@@ -160,7 +160,7 @@ describe.skipIf(!GIT_OK)("env sync across machines (e2e)", () => {
     // Without the key, materialize fails with a clear message.
     process.env.BOOT_HOME = homeB;
     try {
-      await expect(envMaterialize({ cwd: wsB })).rejects.toThrow(/No boot secret key/);
+      await expect(envMaterialize({ cwd: wsB })).rejects.toThrow(/No Boot secret key/);
     } finally {
       process.env.BOOT_HOME = prevHome;
     }

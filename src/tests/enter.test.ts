@@ -88,7 +88,7 @@ describe.skipIf(!GIT_OK)("enterCommand", () => {
 
     expect(existsSync(path.join(dir, "package.json"))).toBe(true);
     expect(existsSync(path.join(dir, ".git"))).toBe(true);
-    expect(output()).toMatch(/hydrated/);
+    expect(output()).toContain("cloned apps/web");
     expect(output()).toContain(path.join("apps", "web"));
   });
 
@@ -102,12 +102,12 @@ describe.skipIf(!GIT_OK)("enterCommand", () => {
     expect(output()).toBe("");
   });
 
-  it("reports nothing to hydrate for a plain folder", async () => {
+  it("reports that a plain folder is not a repository placeholder", async () => {
     const plain = path.join(root, "notes");
     await fs.mkdir(plain, { recursive: true });
 
     await enterCommand(plain);
 
-    expect(output()).toMatch(/nothing to hydrate/);
+    expect(output()).toContain("No repository placeholder found.");
   });
 });

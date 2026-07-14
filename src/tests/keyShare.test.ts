@@ -71,7 +71,7 @@ describe.skipIf(!GIT_OK)("env key share / receive (e2e)", () => {
     await fs.rm(e2eRoot, { recursive: true, force: true });
   });
 
-  it("escrows the key on A and installs the identical key on B via passphrase", async () => {
+  it("shares the key from A and installs the identical key on B via passphrase", async () => {
     const keyA = await asMachine(homeA, async () => {
       await linkCommand(sharedFolder, wsA, { folder: true });
       await envInit();
@@ -98,10 +98,10 @@ describe.skipIf(!GIT_OK)("env key share / receive (e2e)", () => {
     });
   });
 
-  it("revoke prunes the escrowed entry so new machines can no longer receive", async () => {
-    // The escrowed entry is labelled with A's hostname; read it back from the map.
-    const escrowed = await readKeyring(sharedFolder);
-    const label = escrowed?.entries[0]?.label;
+  it("revoke removes the shared entry so new machines can no longer receive", async () => {
+    // The shared entry is labelled with A's hostname; read it back from the map.
+    const shared = await readKeyring(sharedFolder);
+    const label = shared?.entries[0]?.label;
     expect(label).toBeTruthy();
 
     await asMachine(homeA, () => envKeyRevoke(label!, { cwd: wsA }));
@@ -109,7 +109,9 @@ describe.skipIf(!GIT_OK)("env key share / receive (e2e)", () => {
 
     await asMachine(homeD, async () => {
       await linkCommand(sharedFolder, wsD, { folder: true });
-      await expect(envKeyReceive({ cwd: wsD, passphrase: PASS })).rejects.toThrow(/escrow/i);
+      await expect(envKeyReceive({ cwd: wsD, passphrase: PASS })).rejects.toThrow(
+        /no shared key/i,
+      );
       expect(keyExists()).toBe(false);
     });
   });
