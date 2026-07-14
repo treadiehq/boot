@@ -8,3 +8,12 @@ boot-workspace.json
 
 .cursor/
 launch-assets
+
+# Generated launch-video artifacts
+public/boot-soundtrack.wav
+out/
+
+# Remotion recognizes this entry-point directory as a bundle path.
+video/
+!video/
+!video/**

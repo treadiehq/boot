@@ -17,7 +17,11 @@
     "lint": "tsc --noEmit",
     "qa": "bash scripts/qa.sh",
     "demo": "bash scripts/demo.sh",
-    "build:binary": "bash scripts/build-release.sh"
+    "build:binary": "bash scripts/build-release.sh",
+    "video:audio": "node video/generate-audio.mjs",
+    "video:check": "tsc --noEmit -p video/tsconfig.json",
+    "video:studio": "pnpm video:audio && remotion studio video/index.ts",
+    "video:render": "pnpm video:audio && remotion render video/index.ts BootLaunch out/boot-launch.mp4 --codec=h264"
   },
   "keywords": [
     "cli",
@@ -43,7 +47,14 @@
     "fuse-native": "^2.2.6"
   },
   "devDependencies": {
+    "@remotion/cli": "4.0.489",
+    "@remotion/media": "4.0.489",
     "@types/node": "^26.0.1",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "remotion": "4.0.489",
     "tsup": "^8.5.1",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3",
