@@ -21,6 +21,7 @@ import { detectProject } from "./projectDetect";
 import { isPlaceholder, readPlaceholder } from "./placeholder";
 import type { HydrateInfo, RepoEntry } from "./manifest";
 import { toPosixRelative } from "./pathUtils";
+import { fileReadError, isFileNotFoundError, sanitizeUserText } from "./userErrors";
 
 /** Safety bound so a pathological tree can never recurse forever. */
 const MAX_DEPTH = 12;
@@ -49,12 +50,21 @@ interface Discovered {
 export async function scanWorkspace(workspacePath: string): Promise<ScanResult> {
   const root = path.resolve(workspacePath);
 
-  const stat = await fs.stat(root).catch(() => null);
-  if (!stat) {
-    throw new Error(`Workspace path does not exist: ${root}`);
+  let stat;
+  try {
+    stat = await fs.stat(root);
+  } catch (error) {
+    if (isFileNotFoundError(error)) {
+      throw new Error(
+        `Workspace path does not exist: ${sanitizeUserText(root)}. Create it or choose an existing directory, then retry.`,
+      );
+    }
+    throw fileReadError("workspace path", root, error);
   }
   if (!stat.isDirectory()) {
-    throw new Error(`Workspace path is not a directory: ${root}`);
+    throw new Error(
+      `Workspace path is not a directory: ${sanitizeUserText(root)}. Choose a directory, then retry.`,
+    );
   }
 
   const config = await loadConfig(root);

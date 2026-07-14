@@ -1,93 +1,74 @@
 # Boot
 
-**Your code workspace, everywhere.**
+**Your workspace, wherever you work.**
 
-Boot puts the same repo layout on every laptop and cloud agent. Repos show up
-instantly as tiny placeholders, then clone when you open them.
-
-It also syncs your **env vars** (encrypted) and keeps each machine current in
-the background, so you never build on a stale `main`.
-
-What Boot gives you:
-
-- **The same workspace everywhere.** Set up a new laptop or cloud agent and your
-  repos appear in the right folders in seconds.
-- **Fresh code by default.** Background sync updates clean repos, so you do not
-  build on yesterday's `main`.
-
-> Boot doesn't replace Git or live-sync your edits. It syncs structure and
-> secrets, not a real-time copy of your files.
+Boot recreates your project setup on any machine or cloud agent, so you can
+start working without rebuilding it by hand.
 
 ## Install
 
-**macOS / Linux** (needs `curl`):
+macOS or Linux:
 
 ```bash
 curl -fsSL https://useboot.co/install.sh | bash
 ```
 
-**Windows** (PowerShell):
+Windows PowerShell:
 
 ```powershell
 irm https://useboot.co/install.ps1 | iex
 ```
 
-Installs a standalone binary (macOS/Linux on x64+arm64, Windows on x64). Git is
-required for Boot's repo syncing. Update anytime with `boot update`.
+Boot requires Git.
 
-## Use it
+## Get started
 
-You need one private git repo to store the layout. A name like `code-map` works
-well. If it is on GitHub and you have the [GitHub CLI](https://cli.github.com),
-Boot can create it during setup. Otherwise create an empty private repo first.
-
-Then run one command on each machine. It connects the workspace, sets up
-encrypted env vars, installs auto-clone on `cd`, and starts background sync:
+Run Boot from the folder that contains your project:
 
 ```bash
-boot setup git@github.com:me/code-map.git ~/code
+cd ~/code
+boot init
+boot up . --profile agent
+boot inspect --json
 ```
 
-Run the same command on your next machine and your whole layout shows up as
-placeholders that clone when you open them. It is safe to re-run anytime.
+`boot init` scans the project and creates `boot.yaml`. Review that file and
+commit it with your code.
 
-You do not have to remember to sync. Background sync pulls and pushes the layout
-for you, so a repo you add on one machine appears on the others. `boot push` and
-`boot pull` are there when you want to sync right now.
+`boot up` prepares the repositories your agent needs and checks the required
+tools, services, and environment variables.
 
-## Handy commands
+`boot inspect --json` gives the agent a clear summary of the workspace without
+including secret values.
 
-| Command | What it does |
-| --- | --- |
-| `boot setup <remote> [path]` | Set up (or update) a machine in one shot. |
-| `boot push` | Publish this machine's repo layout now. |
-| `boot pull` | Bring in layout changes from other machines; `--dry-run` previews. |
-| `boot cd <name>` | Find a repo by name and jump to it with `bcd`. |
-| `boot hydrate <path>` | Clone a placeholder repo now. |
-| `boot env key share` / `receive` | Move your encrypted secrets to a new machine with a passphrase. |
-| `boot agent <remote> [path]` | Set up a CI job or cloud agent from your layout. |
-| `boot update` | Update Boot itself to the latest version. |
-| `boot doctor --system` | Check Boot's setup on this machine. |
+## What Boot handles
 
-Env-var sync, folder transport, FUSE mounts, and the full command
-reference live in **[docs/detailed.md](docs/detailed.md)**.
+- One repository or many
+- Repository paths, roles, branches, and clone URLs
+- Project commands and constraints
+- Required tools, services, and environment variables
+- Different setups for local work, coding agents, CI, and review
 
-## Dev
+Boot prepares repositories and checks requirements. It does not replace Git,
+install tools, or start services.
+
+## Learn more
+
+- [Getting started](docs/getting-started.md)
+- [`boot.yaml` reference](docs/boot-yaml.md)
+- [Agent workflows](docs/agents.md)
+- [Sharing a workspace](docs/publishing.md)
+- [CLI reference](docs/reference.md)
+- [Advanced features](docs/detailed.md)
+
+## Development
 
 ```bash
-pnpm dev <cmd>      # run from source
-pnpm build          # bundle (dist/index.js, needs Node to run)
-pnpm test           # tests
-pnpm demo           # narrated, offline two-machine walkthrough (great for showing off)
-pnpm build:binary   # standalone binaries for all platforms (needs Bun) → dist/release/
+pnpm install
+pnpm lint
+pnpm test:run
+pnpm qa
 ```
-
-## Not yet
-
-- a native **macOS File Provider** extension, so on-read cloning does not need
-  macFUSE;
-- **continuous file-content sync** of *uncommitted* work between machines (Boot
-  syncs layout and secrets, not live edits).
 
 ## License
 

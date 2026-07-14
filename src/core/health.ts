@@ -6,6 +6,7 @@ import { isDaemonRunning, readDaemonState } from "./daemonState";
 import { isLinked, readLinkConfig } from "./map";
 import { keyExists, secretKeyPath } from "./secrets";
 import { detectServicePlatform, serviceFilePath, type ServicePlatform } from "./service";
+import { fileReadError, isFileNotFoundError } from "./userErrors";
 
 export type SupportedShell = "zsh" | "bash" | "fish" | "powershell";
 
@@ -49,8 +50,9 @@ export function hookEvalLine(shell: SupportedShell): string {
 export function hookInstalledIn(rcPath: string): boolean {
   try {
     return readFileSync(rcPath, "utf8").includes("boot shell-hook");
-  } catch {
-    return false;
+  } catch (error) {
+    if (isFileNotFoundError(error)) return false;
+    throw fileReadError("shell configuration", rcPath, error);
   }
 }
 
@@ -95,8 +97,8 @@ export interface HealthOptions {
  */
 export async function collectHealth(root: string, opts: HealthOptions = {}): Promise<SetupHealth> {
   const home = opts.home ?? os.homedir();
-  const linked = isLinked(root);
-  const cfg = linked ? await readLinkConfig(root) : null;
+  const cfg = isLinked(root) ? await readLinkConfig(root) : null;
+  const linked = cfg !== null;
   const platform = opts.platform === undefined ? detectServicePlatform() : opts.platform;
   const serviceInstalled = platform ? existsSync(serviceFilePath(platform, root, home)) : false;
   const state = await readDaemonState(root);

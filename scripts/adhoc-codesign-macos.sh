@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
 #
-# Ad-hoc codesign a macOS binary produced by `bun build --compile`.
+# Ad-hoc sign a macOS binary produced by `bun build --compile`.
 #
-# Bun can embed a truncated LC_CODE_SIGNATURE that the kernel rejects, SIGKILLing
-# the binary before it runs. We build with BUN_NO_CODESIGN_MACHO_BINARY=1 (skip
-# Bun's own signing) and ad-hoc sign here instead, which produces a valid,
-# runnable binary. No-ops on non-macOS so it's safe to call unconditionally.
+# The release build disables Bun's signing and signs the result here instead.
+# This script does nothing on non-macOS hosts.
 #
 set -euo pipefail
 

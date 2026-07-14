@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 #
-# Manual QA for the full CLI workflow.
+# Manual QA for core CLI workflows.
 #
 # Creates a fully self-contained temporary workspace with local Git repos
-# (no network, no GitHub), then exercises every CLI command and asserts the
-# expected behavior. Everything happens under a temp dir that is removed on
-# exit, so the user's real filesystem is never touched.
+# (no network, no GitHub), then exercises key commands and checks their
+# expected behavior. Temporary workspaces are removed on exit; the build step
+# updates this project's dist/ directory.
 #
 # Run with:  pnpm qa
 #
@@ -24,6 +24,7 @@ fi
 echo "Building the CLI..."
 pnpm build >/dev/null 2>&1 || { echo "FATAL: build failed" >&2; exit 1; }
 DIST="$PROJECT_ROOT/dist/index.js"
+[ -f "$DIST" ] || { echo "FATAL: build did not create $DIST" >&2; exit 1; }
 boot() { node "$DIST" "$@"; }
 
 # --- Scratch space ----------------------------------------------------------
@@ -116,6 +117,20 @@ boot init "$WS" >/dev/null
 assert_in_file "$IGNORE_FILE" "sentinel" "init does not overwrite without --force"
 boot init "$WS" --force >/dev/null
 refute_in_file "$IGNORE_FILE" "sentinel" "init --force overwrites"
+assert_in_file "$CONFIG_FILE" 'schemaVersion: 1' "init writes a versioned workspace"
+assert_in_file "$CONFIG_FILE" 'profiles:' "init writes profile definitions"
+
+# --- workspace preparation and agent context -------------------------------
+echo
+echo "=== up / inspect ==="
+boot up "$WS" --profile local --dry-run --json | tee "$OUT"
+assert_out '"provider": "local"' "up dry-run prepares the local workspace"
+assert_out '"profile": "local"' "up dry-run resolves the local profile"
+boot up "$WS" --profile local --json | tee "$OUT"
+assert_out '"ready": true' "up reaches a ready state"
+boot inspect "$WS" --json | tee "$OUT"
+assert_out '"repositories"' "inspect returns repository context"
+assert_out '"constraints"' "inspect returns workspace constraints"
 
 # --- 2. scan ---------------------------------------------------------------
 echo
@@ -159,13 +174,13 @@ refute_file "$LAZY/apps/repo-a/.git"           # not cloned yet
 # remoteless repo placeholder must record a null remote.
 REPO_JSON_B="$(find "$LAZY/old/repo-b" -name repo.json | head -n1)"
 assert_in_file "$REPO_JSON_B" '"remoteUrl": null' "remoteless placeholder records null remote"
-assert_out "not hydratable" "lazy restore flags the remoteless repo as not hydratable"
+assert_out "cannot clone it" "lazy restore explains why the repository cannot be cloned"
 
 # --- 6. status -------------------------------------------------------------
 echo
 echo "=== status (before hydrate) ==="
 boot status "$LAZY" | tee "$OUT"
-assert_out "Placeholders:" "status lists placeholders section"
+assert_out "Repository placeholders:" "status lists repository placeholders"
 assert_out "apps/repo-a" "status shows repo-a placeholder"
 assert_out "old/repo-b" "status shows repo-b placeholder"
 
@@ -184,7 +199,7 @@ else
 fi
 # hydrate is idempotent / refuses to overwrite a real repo.
 boot hydrate "$LAZY/apps/repo-a" | tee "$OUT"
-assert_out "already hydrated" "hydrate refuses to overwrite an existing repo"
+assert_out "already cloned" "hydrate refuses to overwrite an existing repository"
 # hydrate refuses a remoteless placeholder.
 if boot hydrate "$LAZY/old/repo-b" >"$OUT" 2>&1; then
   bad "hydrate should fail for a remoteless placeholder"
@@ -197,7 +212,7 @@ assert_file "$REPO_JSON_B"                      # placeholder left intact
 echo
 echo "=== doctor ==="
 boot doctor "$LAZY" | tee "$OUT"
-assert_out "placeholder with no remote URL" "doctor flags the unhydratable placeholder"
+assert_out "placeholder with no remote URL" "doctor flags the repository that cannot be downloaded"
 assert_out "Warnings:" "doctor prints a warnings section"
 boot doctor "$WS" | tee "$OUT"
 assert_out "dirty" "doctor flags the dirty repo in the source workspace"
@@ -211,4 +226,4 @@ if [ "$FAIL" -ne 0 ]; then
   echo "QA FAILED"
   exit 1
 fi
-echo "QA PASSED — full CLI workflow verified."
+echo "QA PASSED — core workflows verified."

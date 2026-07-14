@@ -11,14 +11,14 @@ export async function statusCommand(workspacePath: string): Promise<void> {
   const placeholders = result.repos.filter((r) => r.hydrate.status === "placeholder");
   const dirtyCount = hydrated.filter((r) => r.dirty).length;
 
-  logger.heading("boot Status");
+  logger.heading("boot status");
 
   // Column widths shared across hydrated + placeholder rows for alignment.
   const allRows = [...hydrated, ...placeholders];
   const pathW = Math.max(4, ...allRows.map((r) => r.relativePath.length));
   const branchW = Math.max(6, ...allRows.map((r) => (r.currentBranch ?? "no remote").length));
 
-  logger.info(colors.bold("Hydrated:"));
+  logger.info(colors.bold("Cloned repositories:"));
   if (hydrated.length === 0) {
     logger.info(colors.dim("  (none)"));
   }
@@ -30,14 +30,16 @@ export async function statusCommand(workspacePath: string): Promise<void> {
     );
   }
 
-  logger.info(colors.bold("Placeholders:"));
+  logger.info(colors.bold("Repository placeholders:"));
   if (placeholders.length === 0) {
     logger.info(colors.dim("  (none)"));
   }
   for (const repo of placeholders) {
     const hydratable = Boolean(repo.remoteUrl);
     const branch = hydratable ? repo.currentBranch ?? "(unknown)" : "no remote";
-    const note = hydratable ? colors.dim("not hydrated") : colors.yellow("not hydratable");
+    const note = hydratable
+      ? colors.dim("not cloned")
+      : colors.yellow("cannot clone: no remote");
     logger.info(`${colors.dim("\u25cb")} ${repo.relativePath.padEnd(pathW)}  ${branch.padEnd(branchW)}  ${note}`);
   }
 
@@ -49,8 +51,8 @@ export async function statusCommand(workspacePath: string): Promise<void> {
   }
 
   logger.info(colors.bold("Summary:"));
-  logger.info(`Hydrated repos: ${hydrated.length}`);
-  logger.info(`Placeholders: ${placeholders.length}`);
-  logger.info(`Dirty repos: ${dirtyCount}`);
+  logger.info(`Cloned repositories: ${hydrated.length}`);
+  logger.info(`Repository placeholders: ${placeholders.length}`);
+  logger.info(`Dirty repositories: ${dirtyCount}`);
   logger.info(`Other folders: ${result.otherFolders.length}`);
 }

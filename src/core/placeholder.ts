@@ -2,6 +2,14 @@ import fs from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
+import { writeFileAtomic } from "./files";
+import { portableRelativePathSchema } from "./pathUtils";
+import {
+  fileReadError,
+  isFileNotFoundError,
+  quoteUserValue,
+  shellQuoteUserValue,
+} from "./userErrors";
 
 /** Directory and file that mark a folder as a boot placeholder. */
 export const PLACEHOLDER_DIR = ".boot";
@@ -10,7 +18,7 @@ export const PLACEHOLDER_README = "README.md";
 
 export const placeholderSchema = z.object({
   name: z.string(),
-  relativePath: z.string(),
+  relativePath: portableRelativePathSchema,
   remoteUrl: z.string().nullable(),
   branch: z.string().nullable(),
   lastCommit: z.string().nullable(),
@@ -49,64 +57,68 @@ export async function readPlaceholder(repoDir: string): Promise<PlaceholderMeta 
   let raw: string;
   try {
     raw = await fs.readFile(jsonPath, "utf8");
-  } catch {
-    return null;
+  } catch (error) {
+    if (isFileNotFoundError(error)) return null;
+    throw fileReadError("repository placeholder data", jsonPath, error);
   }
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    throw new Error(`Placeholder metadata is not valid JSON: ${jsonPath}`);
+    throw new Error(
+      `Repository download information at ${quoteUserValue(jsonPath, 500)} is not valid JSON. Run \`boot pull\` from the workspace root to recreate it.`,
+    );
   }
 
   const result = placeholderSchema.safeParse(parsed);
   if (!result.success) {
     const issues = result.error.issues
-      .map((issue) => `  - ${issue.path.join(".") || "(root)"}: ${issue.message}`)
-      .join("\n");
-    throw new Error(`Placeholder metadata failed validation: ${jsonPath}\n${issues}`);
+      .slice(0, 3)
+      .map((issue) => `${issue.path.join(".") || "root"}: ${issue.message}`)
+      .join("; ");
+    throw new Error(
+      `Repository download information at ${quoteUserValue(jsonPath, 500)} has an invalid format (${issues}). Run \`boot pull\` from the workspace root to recreate it.`,
+    );
   }
   return result.data;
 }
 
 export async function writePlaceholder(repoDir: string, meta: PlaceholderMeta): Promise<void> {
-  const { dir, jsonPath } = placeholderPaths(repoDir);
-  await fs.mkdir(dir, { recursive: true });
-  await fs.writeFile(jsonPath, `${JSON.stringify(meta, null, 2)}\n`, "utf8");
+  const { jsonPath } = placeholderPaths(repoDir);
+  await writeFileAtomic(jsonPath, `${JSON.stringify(meta, null, 2)}\n`);
 }
 
 function renderReadme(meta: PlaceholderMeta): string {
   const hydratable = Boolean(meta.remoteUrl);
   const lines = [
-    "# boot placeholder",
+    "# Repository not downloaded",
     "",
-    `This folder is a **boot** placeholder for \`${meta.name}\`. The repository`,
-    "has not been cloned yet — only its metadata lives here.",
+    `Repository ${quoteUserValue(meta.name)} has not been downloaded.`,
+    "This folder only contains the information Boot needs to download it.",
     "",
   ];
   if (hydratable) {
     lines.push(
-      "Hydrate it (clone the real repo into this folder) with:",
+      "From the workspace root, run:",
       "",
       "```bash",
-      `boot hydrate ${meta.relativePath}`,
+      `boot hydrate ${shellQuoteUserValue(meta.relativePath)}`,
       "```",
     );
   } else {
     lines.push(
-      "> This placeholder has **no remote URL**, so it cannot be hydrated automatically.",
-      "> The folder structure was recreated, but you'll need to restore its contents manually.",
+      "No repository URL is recorded, so Boot cannot download it.",
+      "Add its URL to `boot.yaml`, then run `boot up .` from the workspace root.",
     );
   }
-  lines.push("", "Learn more: boot keeps a portable map of your workspace, not your files.", "");
+  lines.push("");
   return lines.join("\n");
 }
 
 export async function writePlaceholderReadme(repoDir: string, meta: PlaceholderMeta): Promise<void> {
-  const { dir, readmePath } = placeholderPaths(repoDir);
-  await fs.mkdir(dir, { recursive: true });
-  await fs.writeFile(readmePath, renderReadme(meta), "utf8");
+  const { readmePath } = placeholderPaths(repoDir);
+  await writeFileAtomic(readmePath, renderReadme(meta));
 }
 
 /**

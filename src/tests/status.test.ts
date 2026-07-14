@@ -60,18 +60,18 @@ describe("statusCommand", () => {
     await statusCommand(root);
     const out = logs.join("\n");
 
-    expect(out).toMatch(/Status/);
-    expect(out).toContain("Hydrated:");
-    expect(out).toContain("apps/kplane");
-    expect(out).toContain("Placeholders:");
-    expect(out).toContain("experiments/receipts");
-    expect(out).toContain("old/local-tool");
-    expect(out).toMatch(/not hydratable/); // the remoteless placeholder
-    expect(out).toContain("Other folders:");
-    expect(out).toContain("scratch");
-
-    expect(out).toContain("Hydrated repos: 1");
-    expect(out).toContain("Placeholders: 2");
-    expect(out).toContain("Other folders: 1");
+    expect(out).toBe(`boot status
+Cloned repositories:
+✓ apps/kplane           (detached)  clean
+Repository placeholders:
+○ experiments/receipts  main       not cloned
+○ old/local-tool        no remote  cannot clone: no remote
+Other folders:
+- scratch
+Summary:
+Cloned repositories: 1
+Repository placeholders: 2
+Dirty repositories: 0
+Other folders: 1`);
   });
 });

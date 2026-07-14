@@ -1,7 +1,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { checkoutBranch, cloneRepo, ensureGitAvailable, isGitRepo } from "../core/git";
+import { detectShell, hookEvalLine } from "../core/health";
 import { readManifest, type RepoEntry } from "../core/manifest";
+import { resolveWithinRoot } from "../core/pathUtils";
 import {
   buildPlaceholderMeta,
   isPlaceholder,
@@ -12,6 +14,12 @@ import { colors, logger } from "../ui/logger";
 
 export interface RestoreOptions {
   lazy?: boolean;
+}
+
+function commandArg(value: string): string {
+  if (/^[A-Za-z0-9_./:@%+=,-]+$/.test(value)) return value;
+  if (process.platform === "win32") return `'${value.replace(/'/g, "''")}'`;
+  return `'${value.replace(/'/g, "'\\''")}'`;
 }
 
 export async function restoreCommand(
@@ -38,7 +46,7 @@ export async function restoreCommand(
 }
 
 async function restoreLazy(target: string, repos: RepoEntry[]): Promise<void> {
-  logger.heading(`Restoring workspace (lazy) to ${colors.cyan(target)}`);
+  logger.heading(`Restore snapshot with placeholders — ${colors.cyan(target)}`);
 
   let placeholders = 0;
   let skipped = 0;
@@ -46,16 +54,16 @@ async function restoreLazy(target: string, repos: RepoEntry[]): Promise<void> {
   let notHydratable = 0;
 
   for (const repo of repos) {
-    const repoPath = path.join(target, repo.relativePath);
+    const repoPath = resolveWithinRoot(target, repo.relativePath);
 
     if (isGitRepo(repoPath)) {
-      logger.info(`${colors.dim("\u2022")} ${repo.relativePath} already hydrated`);
+      logger.info(`${colors.dim("\u2022")} ${repo.relativePath} is already cloned.`);
       skipped += 1;
       continue;
     }
 
     if (isPlaceholder(repoPath)) {
-      logger.info(`${colors.dim("\u2022")} ${repo.relativePath} placeholder already exists`);
+      logger.info(`${colors.dim("\u2022")} ${repo.relativePath} already has a placeholder.`);
       existing += 1;
       continue;
     }
@@ -66,40 +74,56 @@ async function restoreLazy(target: string, repos: RepoEntry[]): Promise<void> {
     await writePlaceholderReadme(repoPath, meta);
 
     if (repo.remoteUrl) {
-      logger.success(`placeholder ${repo.relativePath}`);
+      logger.success(`Prepared placeholder ${repo.relativePath}.`);
     } else {
-      logger.warn(`${repo.relativePath} has no remote — placeholder is not hydratable`);
+      logger.warn(`${repo.relativePath} has no remote, so its placeholder cannot clone it.`);
       notHydratable += 1;
     }
     placeholders += 1;
   }
 
   logger.info();
-  logger.success("Lazy restore complete.");
-  logger.info(`Placeholders created: ${placeholders}`);
-  logger.info(`Already hydrated: ${skipped}`);
+  logger.success("Snapshot restored.");
+  logger.info(`Placeholders prepared: ${placeholders}`);
+  logger.info(`Already cloned: ${skipped}`);
   logger.info(`Existing placeholders: ${existing}`);
-  logger.info(`Not hydratable (no remote): ${notHydratable}`);
+  logger.info(`Cannot clone because no remote is set: ${notHydratable}`);
   if (placeholders - notHydratable > 0) {
+    const first = repos.find(
+      (repo) =>
+        Boolean(repo.remoteUrl) &&
+        isPlaceholder(resolveWithinRoot(target, repo.relativePath)),
+    );
     logger.info();
-    logger.next("Hydrate one now:  boot hydrate <relativePath>");
-    logger.next('Or hydrate on access:  eval "$(boot shell-hook zsh)"');
+    if (first) {
+      logger.next(
+        `Clone one now: boot hydrate ${commandArg(
+          resolveWithinRoot(target, first.relativePath),
+        )}`,
+      );
+    }
+    const shell = detectShell();
+    logger.next(
+      shell
+        ? `Clone placeholders on access after adding: ${hookEvalLine(shell)}`
+        : "Set up clone-on-access for your shell: boot shell-hook --help",
+    );
   }
 }
 
 async function restoreEager(target: string, repos: RepoEntry[]): Promise<void> {
-  logger.heading(`Restoring workspace to ${colors.cyan(target)}`);
+  logger.heading(`Restore snapshot — ${colors.cyan(target)}`);
 
   let restored = 0;
   let skipped = 0;
   let warnings = 0;
 
   for (const repo of repos) {
-    const repoPath = path.join(target, repo.relativePath);
+    const repoPath = resolveWithinRoot(target, repo.relativePath);
 
     // Never overwrite an existing repo.
     if (isGitRepo(repoPath)) {
-      logger.info(`${colors.dim("\u2022")} ${repo.relativePath} already exists`);
+      logger.info(`${colors.dim("\u2022")} ${repo.relativePath} already exists.`);
       skipped += 1;
       continue;
     }
@@ -108,15 +132,15 @@ async function restoreEager(target: string, repos: RepoEntry[]): Promise<void> {
 
     if (!repo.remoteUrl) {
       await fs.mkdir(repoPath, { recursive: true });
-      logger.success(`created ${repo.relativePath}`);
-      logger.warn(`${repo.name} has no remote — created folder, cannot clone`);
+      logger.success(`Created ${repo.relativePath}.`);
+      logger.warn(`${repo.name} has no remote, so only its folder was created.`);
       warnings += 1;
       continue;
     }
 
     try {
       await cloneRepo(repo.remoteUrl, repoPath);
-      logger.success(`cloned ${repo.remoteUrl} into ${repo.relativePath}`);
+      logger.success(`Cloned ${repo.remoteUrl} into ${repo.relativePath}.`);
     } catch (err) {
       logger.error((err as Error).message);
       warnings += 1;
@@ -126,9 +150,9 @@ async function restoreEager(target: string, repos: RepoEntry[]): Promise<void> {
     if (repo.currentBranch) {
       try {
         await checkoutBranch(repoPath, repo.currentBranch);
-        logger.success(`checked out ${repo.currentBranch}`);
+        logger.success(`Checked out ${repo.currentBranch}.`);
       } catch {
-        logger.warn(`could not checkout ${repo.currentBranch} for ${repo.name}`);
+        logger.warn(`Could not check out ${repo.currentBranch} for ${repo.name}.`);
         warnings += 1;
       }
     }
@@ -137,9 +161,9 @@ async function restoreEager(target: string, repos: RepoEntry[]): Promise<void> {
   }
 
   logger.info();
-  logger.success("Restore complete.");
-  logger.info(`Repos restored: ${restored}`);
-  logger.info(`Skipped existing repos: ${skipped}`);
+  logger.success("Snapshot restored.");
+  logger.info(`Repositories cloned: ${restored}`);
+  logger.info(`Existing repositories kept: ${skipped}`);
   logger.info(`Warnings: ${warnings}`);
-  logger.next(`Inspect it:  boot status ${path.relative(process.cwd(), target) || "."}`);
+  logger.next(`Check it: boot status ${commandArg(target)}`);
 }

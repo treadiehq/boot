@@ -1,7 +1,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
+import { writeFileAtomic } from "./files";
 import { wrappedKeySchema, type WrappedKey } from "./secrets";
+import { fileReadError, isFileNotFoundError, quoteUserValue } from "./userErrors";
 
 /**
  * The keyring lives in the synced map and holds the workspace's secret key,
@@ -32,21 +34,37 @@ function keyringPath(mapDir: string): string {
 }
 
 export async function readKeyring(mapDir: string): Promise<Keyring | null> {
+  const filePath = keyringPath(mapDir);
+  let raw: string;
   try {
-    const raw = await fs.readFile(keyringPath(mapDir), "utf8");
-    const parsed = keyringSchema.safeParse(JSON.parse(raw));
-    return parsed.success ? parsed.data : null;
-  } catch {
-    return null;
+    raw = await fs.readFile(filePath, "utf8");
+  } catch (error) {
+    if (isFileNotFoundError(error)) return null;
+    throw fileReadError("shared key data", filePath, error);
   }
+  let data: unknown;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    throw new Error(
+      `Shared key data at ${quoteUserValue(filePath, 500)} is not valid JSON. Restore or replace the file, then retry.`,
+    );
+  }
+  const parsed = keyringSchema.safeParse(data);
+  if (!parsed.success) {
+    throw new Error(
+      `Shared key data at ${quoteUserValue(filePath, 500)} has an invalid format. Restore or replace the file, then retry.`,
+    );
+  }
+  return parsed.data;
 }
 
 export async function writeKeyring(mapDir: string, keyring: Keyring): Promise<void> {
-  await fs.mkdir(mapDir, { recursive: true });
-  await fs.writeFile(keyringPath(mapDir), `${JSON.stringify(keyring, null, 2)}\n`, "utf8");
+  const validated = keyringSchema.parse(keyring);
+  await writeFileAtomic(keyringPath(mapDir), `${JSON.stringify(validated, null, 2)}\n`);
 }
 
-/** True when the map already escrows a wrapped key (the signal to `receive`). */
+/** True when the map already contains a wrapped key (the signal to `receive`). */
 export async function hasKeyringEntry(mapDir: string): Promise<boolean> {
   const keyring = await readKeyring(mapDir);
   return Boolean(keyring && keyring.entries.length > 0);
@@ -73,7 +91,7 @@ export async function removeKeyringEntry(mapDir: string, label: string): Promise
   return removed;
 }
 
-/** Labels currently escrowed in the keyring, for listing/diagnostics. */
+/** Labels on wrapped keys currently stored in the keyring. */
 export async function listKeyringLabels(mapDir: string): Promise<string[]> {
   const keyring = await readKeyring(mapDir);
   return keyring ? keyring.entries.map((e) => e.label) : [];

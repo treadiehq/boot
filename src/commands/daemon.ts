@@ -20,22 +20,44 @@ export interface DaemonStartOptions extends SyncOptions {
   interval?: number;
 }
 
+function commandArg(value: string): string {
+  if (/^[A-Za-z0-9_./:@%+=,-]+$/.test(value)) return value;
+  if (process.platform === "win32") return `'${value.replace(/'/g, "''")}'`;
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
 function ensureLinked(root: string): void {
   if (!isLinked(root)) {
-    throw new Error(`${root} is not linked. Run \`boot link <remote> ${root}\` first.`);
+    throw new Error(
+      `This workspace is not linked. Link it with: boot link <map-remote> ${commandArg(root)}`,
+    );
   }
 }
 
 function describeTick(summary: TickSummary): string {
   if (!summary.ok) return colors.red(`sync failed: ${summary.error ?? "unknown error"}`);
-  const parts = [`${summary.repoCount} repo(s)`];
-  if (summary.placeholders > 0) parts.push(`+${summary.placeholders} placeholder`);
+  const parts = [
+    `${summary.repoCount} ${summary.repoCount === 1 ? "repository" : "repositories"}`,
+  ];
+  if (summary.placeholders > 0) {
+    parts.push(
+      `+${summary.placeholders} ${
+        summary.placeholders === 1 ? "placeholder" : "placeholders"
+      }`,
+    );
+  }
   if (summary.cloned > 0) parts.push(`+${summary.cloned} cloned`);
   if (summary.updated > 0) parts.push(colors.green(`${summary.updated} updated`));
   if (summary.behind > 0) parts.push(colors.yellow(`${summary.behind} behind`));
   if (summary.diverged > 0) parts.push(colors.yellow(`${summary.diverged} diverged`));
   if (summary.dirty > 0) parts.push(`${summary.dirty} dirty`);
-  if (summary.fetchFailed > 0) parts.push(colors.yellow(`${summary.fetchFailed} fetch failed`));
+  if (summary.fetchFailed > 0) {
+    parts.push(
+      colors.yellow(
+        `${summary.fetchFailed} ${summary.fetchFailed === 1 ? "fetch" : "fetches"} failed`,
+      ),
+    );
+  }
   return parts.join(", ");
 }
 
@@ -109,14 +131,17 @@ export async function daemonStart(
   ensureLinked(root);
 
   const existing = await readDaemonState(root);
-  if (!options.once && isDaemonRunning(existing)) {
+  if (isDaemonRunning(existing)) {
     throw new Error(
-      `A boot daemon is already running for ${root} (pid ${existing?.pid}). Stop it with \`boot daemon stop\`.`,
+      `A boot daemon is already running for ${root} (pid ${existing?.pid}). Stop it with: boot daemon stop ${commandArg(root)}`,
     );
   }
 
   const config = await loadConfig(root);
   const intervalSeconds = options.interval ?? config.daemonIntervalSeconds;
+  if (!Number.isInteger(intervalSeconds) || intervalSeconds <= 0) {
+    throw new Error("Daemon interval must be a positive whole number of seconds.");
+  }
   const syncOptions: SyncOptions = {
     eager: options.eager,
     fetch: options.fetch,
@@ -132,7 +157,10 @@ export async function daemonStart(
       lastTick: null,
     });
     logger.heading(`boot daemon — single sync of ${colors.cyan(root)}`);
-    await runTickAndRecord(root, syncOptions);
+    const summary = await runTickAndRecord(root, syncOptions);
+    if (!summary.ok) {
+      throw new Error(summary.error ?? "Daemon sync failed.");
+    }
     return;
   }
 
@@ -181,7 +209,7 @@ export async function daemonStop(workspacePath = "."): Promise<void> {
 
   if (!isDaemonRunning(state)) {
     await clearDaemonPid(root);
-    logger.info("No live daemon found; cleared stale state.");
+    logger.info("The daemon was not running. Cleared its saved status.");
     return;
   }
 
@@ -190,7 +218,9 @@ export async function daemonStop(workspacePath = "."): Promise<void> {
     logger.success(`Sent stop signal to daemon (pid ${state.pid}).`);
   } catch (err) {
     await clearDaemonPid(root);
-    logger.warn(`Could not signal pid ${state.pid} (${(err as Error).message}); cleared state.`);
+    logger.warn(
+      `Could not stop pid ${state.pid}: ${(err as Error).message}. Cleared its saved status.`,
+    );
   }
 }
 

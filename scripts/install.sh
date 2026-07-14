@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# boot installer — download a prebuilt binary and put it on your PATH.
+# Download the boot binary and install it on PATH.
 #
 #   curl -fsSL https://raw.githubusercontent.com/treadiehq/boot/main/scripts/install.sh | bash
 #
@@ -25,7 +25,7 @@ fi
 say()  { printf '%s\n' "${dim}→${reset} $*"; }
 ok()   { printf '%s\n' "${green}✓${reset} $*"; }
 die()  { printf '%s\n' "${red}✗${reset} $*" >&2; exit 1; }
-need() { command -v "$1" >/dev/null 2>&1 || die "missing required tool: $1"; }
+need() { command -v "$1" >/dev/null 2>&1 || die "$1 is required but was not found on PATH."; }
 
 need curl
 
@@ -68,33 +68,46 @@ mkdir -p "$BIN_DIR"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-say "downloading ${bold}${ASSET}${reset} (${VERSION}) for ${OS}-${ARCH}"
+say "Downloading ${bold}${ASSET}${reset} (${VERSION})…"
 if ! curl -fSL --progress-bar "$URL" -o "$TMP/$BIN_NAME"; then
-  die "download failed: $URL
-  - no release asset for your platform yet, or
-  - the version tag does not exist (check: https://github.com/${REPO}/releases)"
+  die "Could not download $URL
+Check your network connection and available releases: https://github.com/${REPO}/releases"
 fi
 
 chmod +x "$TMP/$BIN_NAME"
 mv -f "$TMP/$BIN_NAME" "$BIN_DIR/$BIN_NAME"
 
 if ! "$BIN_DIR/$BIN_NAME" --version >/dev/null 2>&1; then
-  die "the installed binary failed to run ($BIN_DIR/$BIN_NAME)"
+  die "The installed binary could not run: $BIN_DIR/$BIN_NAME"
 fi
-ok "installed ${bold}boot $("$BIN_DIR/$BIN_NAME" --version)${reset} → $BIN_DIR/$BIN_NAME"
+ok "Installed ${bold}boot $("$BIN_DIR/$BIN_NAME" --version)${reset} at $BIN_DIR/$BIN_NAME"
 
 # --- PATH hint ---------------------------------------------------------------
 case ":$PATH:" in
   *":$BIN_DIR:"*) ;;
   *)
     printf '\n'
-    say "add ${bold}$BIN_DIR${reset} to your PATH, e.g.:"
-    printf '    echo '\''export PATH="%s:$PATH"'\'' >> ~/.zshrc && source ~/.zshrc\n' "$BIN_DIR"
+    shell_name="$(basename "${SHELL:-}")"
+    say "Add ${bold}$BIN_DIR${reset} to your PATH:"
+    case "$shell_name" in
+      zsh)
+        printf '    echo '\''export PATH="%s:$PATH"'\'' >> ~/.zshrc && source ~/.zshrc\n' "$BIN_DIR"
+        ;;
+      bash)
+        printf '    echo '\''export PATH="%s:$PATH"'\'' >> ~/.bashrc && source ~/.bashrc\n' "$BIN_DIR"
+        ;;
+      fish)
+        printf '    fish_add_path "%s"\n' "$BIN_DIR"
+        ;;
+      *)
+        printf '    export PATH="%s:$PATH"\n' "$BIN_DIR"
+        ;;
+    esac
     ;;
 esac
 
 printf '\n'
-ok "boot installed. Get started with:"
-printf '    %sboot setup <map-remote> ~/code%s\n' "$bold" "$reset"
+ok "Boot is installed. Initialize a workspace with:"
+printf '    %sboot init%s\n' "$bold" "$reset"
 printf '\n'
-printf '%sUpdate later with:%s  boot update\n' "$dim" "$reset"
+printf '%sUpdate later:%s  boot update\n' "$dim" "$reset"

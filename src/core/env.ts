@@ -2,6 +2,9 @@ import fs from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { decrypt, encrypt, encryptedBlobSchema } from "./secrets";
+import { writeFileAtomic } from "./files";
+import { portableRelativePathSchema, resolveWithinRoot } from "./pathUtils";
+import { fileReadError, isFileNotFoundError, quoteUserValue } from "./userErrors";
 
 /** Where encrypted env files live inside the synced map repo. */
 export const ENV_DIR = "env";
@@ -19,7 +22,8 @@ export function envDir(mapDir: string): string {
 /** Storage path for a scope's encrypted file inside the map repo. */
 export function scopeFilePath(mapDir: string, scope: EnvScope): string {
   if (scope.type === "global") return path.join(envDir(mapDir), GLOBAL_SCOPE_FILE);
-  return path.join(envDir(mapDir), REPO_SCOPE_DIR, `${scope.relativePath}.json`);
+  const relativePath = portableRelativePathSchema.parse(scope.relativePath);
+  return resolveWithinRoot(path.join(envDir(mapDir), REPO_SCOPE_DIR), `${relativePath}.json`);
 }
 
 export function scopeLabel(scope: EnvScope): string {
@@ -48,7 +52,11 @@ export function parseDotenv(text: string): Record<string, string> {
     ) {
       const quote = value[0];
       value = value.slice(1, -1);
-      if (quote === '"') value = value.replace(/\\n/g, "\n").replace(/\\"/g, '"');
+      if (quote === '"') {
+        value = value.replace(/\\(n|"|\\)/g, (_match, escaped: string) =>
+          escaped === "n" ? "\n" : escaped,
+        );
+      }
     }
     out[key] = value;
   }
@@ -82,11 +90,25 @@ export async function readEnvScope(
   let raw: string;
   try {
     raw = await fs.readFile(file, "utf8");
-  } catch {
-    return null;
+  } catch (error) {
+    if (isFileNotFoundError(error)) return null;
+    throw fileReadError("saved environment data", file, error);
   }
-  const blob = encryptedBlobSchema.parse(JSON.parse(raw));
-  return parseDotenv(decrypt(blob, key));
+  let data: unknown;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    throw new Error(
+      `Saved environment data at ${quoteUserValue(file, 500)} is not valid JSON. Restore or replace the file, then retry.`,
+    );
+  }
+  const parsed = encryptedBlobSchema.safeParse(data);
+  if (!parsed.success) {
+    throw new Error(
+      `Saved environment data at ${quoteUserValue(file, 500)} has an invalid format. Restore or replace the file, then retry.`,
+    );
+  }
+  return parseDotenv(decrypt(parsed.data, key));
 }
 
 /** Encrypt and persist a scope's vars (writes an empty file is avoided — pass {} to clear). */
@@ -97,9 +119,8 @@ export async function writeEnvScope(
   key: Buffer,
 ): Promise<void> {
   const file = scopeFilePath(mapDir, scope);
-  await fs.mkdir(path.dirname(file), { recursive: true });
   const blob = encrypt(serializeDotenv(vars), key);
-  await fs.writeFile(file, `${JSON.stringify(blob, null, 2)}\n`, "utf8");
+  await writeFileAtomic(file, `${JSON.stringify(blob, null, 2)}\n`);
 }
 
 export async function removeEnvScope(mapDir: string, scope: EnvScope): Promise<boolean> {
@@ -107,8 +128,11 @@ export async function removeEnvScope(mapDir: string, scope: EnvScope): Promise<b
   try {
     await fs.rm(file);
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    if (isFileNotFoundError(error)) return false;
+    throw new Error(
+      `Could not remove saved environment data at ${quoteUserValue(file, 500)}. Check the file and its permissions, then retry.`,
+    );
   }
 }
 
@@ -126,8 +150,9 @@ async function walkScopeFiles(base: string, dir: string, out: EnvScope[]): Promi
   let entries;
   try {
     entries = await fs.readdir(dir, { withFileTypes: true });
-  } catch {
-    return;
+  } catch (error) {
+    if (isFileNotFoundError(error)) return;
+    throw fileReadError("saved environment directory", dir, error);
   }
   for (const entry of entries) {
     const full = path.join(dir, entry.name);
@@ -153,7 +178,7 @@ export interface MaterializeResult {
 /** Target `.env` location for a scope within the workspace. */
 export function materializeTarget(root: string, scope: EnvScope): string {
   if (scope.type === "global") return path.join(root, DOTENV_FILE);
-  return path.join(root, scope.relativePath, DOTENV_FILE);
+  return path.join(resolveWithinRoot(root, scope.relativePath), DOTENV_FILE);
 }
 
 /**
@@ -171,10 +196,47 @@ export async function materializeAll(
     const vars = await readEnvScope(mapDir, scope, key);
     if (!vars) continue;
     const target = materializeTarget(root, scope);
-    await fs.mkdir(path.dirname(target), { recursive: true });
-    await fs.writeFile(target, serializeDotenv(vars), "utf8");
+    await writeFileAtomic(target, serializeDotenv(vars), { mode: 0o600 });
     await excludeDotenvFromGit(path.dirname(target));
     results.push({ scope, target, count: Object.keys(vars).length });
+  }
+  return results;
+}
+
+/** Decrypt scopes only far enough to report which names are available. */
+export async function storedEnvironmentNames(mapDir: string, key: Buffer): Promise<Set<string>> {
+  const names = new Set<string>();
+  for (const scope of await listScopes(mapDir)) {
+    const vars = await readEnvScope(mapDir, scope, key);
+    for (const name of Object.keys(vars ?? {})) names.add(name);
+  }
+  return names;
+}
+
+/**
+ * Materialize only the environment names and repository scopes selected by a
+ * Profile. Values never leave this function in its result.
+ */
+export async function materializeSelected(
+  root: string,
+  mapDir: string,
+  key: Buffer,
+  names: Set<string>,
+  repositoryPaths: Set<string>,
+): Promise<MaterializeResult[]> {
+  const results: MaterializeResult[] = [];
+  for (const scope of await listScopes(mapDir)) {
+    if (scope.type === "repo" && !repositoryPaths.has(scope.relativePath)) continue;
+    const vars = await readEnvScope(mapDir, scope, key);
+    if (!vars) continue;
+    const selected = Object.fromEntries(
+      Object.entries(vars).filter(([name]) => names.has(name)),
+    );
+    if (Object.keys(selected).length === 0) continue;
+    const target = materializeTarget(root, scope);
+    await writeFileAtomic(target, serializeDotenv(selected), { mode: 0o600 });
+    await excludeDotenvFromGit(path.dirname(target));
+    results.push({ scope, target, count: Object.keys(selected).length });
   }
   return results;
 }

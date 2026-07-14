@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { ensureGitAvailable } from "../core/git";
 import { loadMachineIdentity } from "../core/identity";
+import { withWorkspaceMapLock } from "../core/lock";
 import { isLinked, mapPaths } from "../core/map";
 import { loadTransport } from "../core/transport";
 import {
@@ -45,9 +46,17 @@ function resolveRoot(opts: EnvCommonOptions): string {
   return path.resolve(opts.cwd ?? ".");
 }
 
+function commandArg(value: string): string {
+  if (/^[A-Za-z0-9_./:@%+=,-]+$/.test(value)) return value;
+  if (process.platform === "win32") return `'${value.replace(/'/g, "''")}'`;
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
 function requireLinked(root: string): void {
   if (!isLinked(root)) {
-    throw new Error(`${root} is not linked. Run \`boot link <remote>\` first.`);
+    throw new Error(
+      `This workspace is not linked. Link it with: boot link <map-remote> ${commandArg(root)}`,
+    );
   }
 }
 
@@ -76,14 +85,14 @@ export async function envInit(opts: EnvCommonOptions = {}): Promise<void> {
   void opts;
   const { created } = await loadOrCreateKey();
   if (created) {
-    logger.success(`created secret key at ${colors.cyan(secretKeyPath())}`);
+    logger.success(`Created a secret key at ${colors.cyan(secretKeyPath())}.`);
     logger.info();
-    logger.info("This key encrypts your env vars in the synced map. To use the same");
-    logger.info("secrets on another machine, copy it there:");
+    logger.info("This key encrypts environment variables in the workspace map.");
+    logger.info("To use the same values on another machine:");
     logger.info(colors.dim("  boot env key export        # on this machine"));
     logger.info(colors.dim("  boot env key import <key>  # on the other machine"));
   } else {
-    logger.info(`${colors.dim("\u2022")} secret key already exists at ${secretKeyPath()}`);
+    logger.info(`${colors.dim("\u2022")} A secret key already exists at ${secretKeyPath()}.`);
   }
 }
 
@@ -96,20 +105,28 @@ export async function envSet(assignments: string[], opts: EnvCommonOptions = {})
   const scope = scopeFromOptions(opts);
 
   const { key } = await loadOrCreateKey();
-  const transport = await loadTransport(root);
-  await transport.pull();
-
-  const vars = (await readEnvScope(mapPaths(root).mapDir, scope, key)) ?? {};
-  for (const assignment of assignments) {
-    const eq = assignment.indexOf("=");
-    if (eq <= 0) throw new Error(`Invalid assignment "${assignment}". Use KEY=VALUE.`);
-    vars[assignment.slice(0, eq).trim()] = assignment.slice(eq + 1);
-  }
-
-  await writeEnvScope(mapPaths(root).mapDir, scope, vars, key);
-  await commit(root, scope, "set");
-  logger.success(`set ${assignments.length} var(s) in ${colors.cyan(scopeLabel(scope))}`);
-  logger.next("Write them to .env files:  boot env materialize");
+  await withWorkspaceMapLock(root, async () => {
+    const transport = await loadTransport(root);
+    await transport.pull();
+    const vars = (await readEnvScope(mapPaths(root).mapDir, scope, key)) ?? {};
+    for (const assignment of assignments) {
+      const eq = assignment.indexOf("=");
+      if (eq <= 0) throw new Error(`Invalid assignment "${assignment}". Use KEY=VALUE.`);
+      const name = assignment.slice(0, eq).trim();
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+        throw new Error(`Invalid environment variable name "${name}".`);
+      }
+      vars[name] = assignment.slice(eq + 1);
+    }
+    await writeEnvScope(mapPaths(root).mapDir, scope, vars, key);
+    await commit(root, scope, "set");
+  });
+  logger.success(
+    `Set ${assignments.length} ${
+      assignments.length === 1 ? "variable" : "variables"
+    } in ${colors.cyan(scopeLabel(scope))}.`,
+  );
+  logger.next(`Write .env files: boot env materialize -C ${commandArg(root)}`);
 }
 
 /** `boot env import <file>` — merge a dotenv file into a scope. */
@@ -125,14 +142,20 @@ export async function envImport(file: string, opts: EnvCommonOptions = {}): Prom
   if (count === 0) throw new Error(`No variables found in ${file}.`);
 
   const { key } = await loadOrCreateKey();
-  const transport = await loadTransport(root);
-  await transport.pull();
-
-  const vars = (await readEnvScope(mapPaths(root).mapDir, scope, key)) ?? {};
-  Object.assign(vars, incoming);
-  await writeEnvScope(mapPaths(root).mapDir, scope, vars, key);
-  await commit(root, scope, "import");
-  logger.success(`imported ${count} var(s) into ${colors.cyan(scopeLabel(scope))}`);
+  await withWorkspaceMapLock(root, async () => {
+    const transport = await loadTransport(root);
+    await transport.pull();
+    const vars = (await readEnvScope(mapPaths(root).mapDir, scope, key)) ?? {};
+    Object.assign(vars, incoming);
+    await writeEnvScope(mapPaths(root).mapDir, scope, vars, key);
+    await commit(root, scope, "import");
+  });
+  logger.success(
+    `Imported ${count} ${count === 1 ? "variable" : "variables"} into ${colors.cyan(
+      scopeLabel(scope),
+    )}.`,
+  );
+  logger.next(`Write .env files: boot env materialize -C ${commandArg(root)}`);
 }
 
 /** `boot env rm KEY...` (or `--all` to remove the whole scope). */
@@ -146,32 +169,40 @@ export async function envRm(
   const scope = scopeFromOptions(opts);
   const key = await loadKey();
 
-  const transport = await loadTransport(root);
-  await transport.pull();
+  await withWorkspaceMapLock(root, async () => {
+    const transport = await loadTransport(root);
+    await transport.pull();
 
-  if (opts.all) {
-    const removed = await removeEnvScope(mapPaths(root).mapDir, scope);
-    if (!removed) {
-      logger.info(`${colors.dim("\u2022")} no env stored for ${scopeLabel(scope)}`);
+    if (opts.all) {
+      const removed = await removeEnvScope(mapPaths(root).mapDir, scope);
+      if (!removed) {
+        logger.info(
+          `${colors.dim("\u2022")} No environment variables are stored for ${scopeLabel(scope)}.`,
+        );
+        return;
+      }
+      await commit(root, scope, "remove");
+      logger.success(`Removed all environment variables for ${colors.cyan(scopeLabel(scope))}.`);
       return;
     }
-    await commit(root, scope, "remove");
-    logger.success(`removed all env for ${colors.cyan(scopeLabel(scope))}`);
-    return;
-  }
 
-  if (keys.length === 0) throw new Error("Pass key names to remove, or --all to clear the scope.");
-  const vars = (await readEnvScope(mapPaths(root).mapDir, scope, key)) ?? {};
-  let removed = 0;
-  for (const k of keys) {
-    if (k in vars) {
-      delete vars[k];
-      removed += 1;
+    if (keys.length === 0) throw new Error("Pass key names to remove, or --all to clear the scope.");
+    const vars = (await readEnvScope(mapPaths(root).mapDir, scope, key)) ?? {};
+    let removed = 0;
+    for (const k of keys) {
+      if (k in vars) {
+        delete vars[k];
+        removed += 1;
+      }
     }
-  }
-  await writeEnvScope(mapPaths(root).mapDir, scope, vars, key);
-  await commit(root, scope, "remove");
-  logger.success(`removed ${removed} var(s) from ${colors.cyan(scopeLabel(scope))}`);
+    await writeEnvScope(mapPaths(root).mapDir, scope, vars, key);
+    await commit(root, scope, "remove");
+    logger.success(
+      `Removed ${removed} ${removed === 1 ? "variable" : "variables"} from ${colors.cyan(
+        scopeLabel(scope),
+      )}.`,
+    );
+  });
 }
 
 /** `boot env list` — show scopes and their keys (values masked). */
@@ -180,8 +211,8 @@ export async function envList(opts: EnvCommonOptions = {}): Promise<void> {
   requireLinked(root);
 
   if (!keyExists()) {
-    logger.warn(`no secret key on this machine (${secretKeyPath()}).`);
-    logger.info("Copy it over with `boot env key import <key>` to read these secrets.");
+    logger.warn(`This machine has no secret key (${secretKeyPath()}).`);
+    logger.next("Install an exported key: boot env key import");
     return;
   }
   const key = await loadKey();
@@ -189,11 +220,14 @@ export async function envList(opts: EnvCommonOptions = {}): Promise<void> {
   const scopes = await listScopes(mapDir);
 
   if (scopes.length === 0) {
-    logger.info(`${colors.dim("\u2022")} no env vars stored yet. Add some with \`boot env set\`.`);
+    logger.info(`${colors.dim("\u2022")} No environment variables are stored yet.`);
+    logger.next(`Add one: boot env set NAME=value -C ${commandArg(root)}`);
     return;
   }
 
-  logger.heading(`Env vars in ${colors.cyan(path.relative(process.cwd(), root) || ".")}`);
+  logger.heading(
+    `Environment variables — ${colors.cyan(path.relative(process.cwd(), root) || ".")}`,
+  );
   for (const scope of scopes) {
     const vars = (await readEnvScope(mapDir, scope, key)) ?? {};
     logger.info();
@@ -212,18 +246,23 @@ export async function envMaterialize(opts: EnvCommonOptions = {}): Promise<void>
   const key = await loadKey();
   const mapDir = mapPaths(root).mapDir;
 
-  const transport = await loadTransport(root);
-  await transport.pull();
-
-  const written = await materializeAll(root, mapDir, key);
+  const written = await withWorkspaceMapLock(root, async () => {
+    const transport = await loadTransport(root);
+    await transport.pull();
+    return materializeAll(root, mapDir, key);
+  });
   if (written.length === 0) {
-    logger.info(`${colors.dim("\u2022")} no env vars to materialize.`);
+    logger.info(`${colors.dim("\u2022")} No .env files to write.`);
     return;
   }
-  logger.heading(`Materialized ${written.length} .env file(s)`);
+  logger.heading(
+    `Wrote ${written.length} ${written.length === 1 ? ".env file" : ".env files"}`,
+  );
   for (const result of written) {
     logger.success(
-      `${colors.cyan(path.relative(root, result.target))} ${colors.dim(`(${result.count} vars)`)}`,
+      `${colors.cyan(path.relative(root, result.target))} ${colors.dim(
+        `(${result.count} ${result.count === 1 ? "variable" : "variables"})`,
+      )}`,
     );
   }
 }
@@ -251,18 +290,22 @@ export async function envKeyExport(opts: EnvKeyExportOptions = {}): Promise<void
   if (opts.file) {
     const dest = path.resolve(opts.file);
     await fs.writeFile(dest, `${b64}\n`, { mode: 0o600 });
-    logger.success(`wrote the key to ${colors.cyan(dest)} (0600)`);
-    logger.next(`On the other machine:  boot env key import --file ${dest}`);
+    logger.success(`Wrote the key to ${colors.cyan(dest)} with mode 0600.`);
+    logger.next(
+      `Copy it without renaming it. From its directory on the other machine, run: boot env key import --file ${commandArg(
+        path.basename(dest),
+      )}`,
+    );
     return;
   }
   if (await copyToClipboard(b64)) {
-    logger.success("copied the secret key to your clipboard");
-    logger.next("On the other machine:  boot env key import  (then paste)");
-    logger.info(colors.dim("Tip: `boot env key share` avoids moving the raw key at all."));
+    logger.success("Copied the secret key to your clipboard.");
+    logger.next("On the other machine, run `boot env key import`, then paste it.");
+    logger.info(colors.dim("Tip: `boot env key share` transfers a passphrase-protected key."));
     return;
   }
   // No clipboard tool — be explicit rather than silently dumping the key.
-  logger.warn("no clipboard tool found (pbcopy/wl-copy/xclip/xsel).");
+  logger.warn("No clipboard tool found (pbcopy, wl-copy, xclip, or xsel).");
   logger.info(colors.dim("Re-run with --file <path> to write it, or --stdout to print it."));
 }
 
@@ -287,14 +330,14 @@ export async function envKeyImport(base64 = "", opts: EnvKeyImportOptions = {}):
   if (!value) throw new Error("No key provided. Pass it as an argument, --file, or via stdin.");
 
   await importKeyBase64(value, opts.force);
-  logger.success(`installed secret key at ${colors.cyan(secretKeyPath())}`);
-  logger.next("Write your synced secrets to disk:  boot env materialize");
+  logger.success(`Installed the secret key at ${colors.cyan(secretKeyPath())}.`);
+  logger.next("From a linked workspace, write .env files with: boot env materialize");
 }
 
 /**
- * `boot env key share` — escrow this machine's key in the synced map, encrypted
- * under a passphrase. The other machine runs `boot env key receive` with the
- * same passphrase. You transfer a short passphrase out-of-band, not the key.
+ * `boot env key share` — store an encrypted copy of this machine's key in the
+ * synced map. The other machine runs `boot env key receive` with the same
+ * passphrase. You transfer a short passphrase out-of-band, not the key.
  */
 export async function envKeyShare(opts: EnvCommonOptions & { passphrase?: string } = {}): Promise<void> {
   await ensureGitAvailable();
@@ -307,21 +350,23 @@ export async function envKeyShare(opts: EnvCommonOptions & { passphrase?: string
   const passphrase = opts.passphrase ?? (await promptNewPassphrase());
   const wrapped = wrapKey(key, passphrase);
 
-  const transport = await loadTransport(root);
-  await transport.pull();
-  await upsertKeyringEntry(mapPaths(root).mapDir, {
-    label: identity.hostname,
-    createdAt: new Date().toISOString(),
-    wrapped,
+  await withWorkspaceMapLock(root, async () => {
+    const transport = await loadTransport(root);
+    await transport.pull();
+    await upsertKeyringEntry(mapPaths(root).mapDir, {
+      label: identity.hostname,
+      createdAt: new Date().toISOString(),
+      wrapped,
+    });
+    await transport.push(`env: share wrapped key from ${identity.hostname}`);
   });
-  await transport.push(`env: share wrapped key from ${identity.hostname}`);
 
-  logger.success("escrowed the key in the map (passphrase-protected)");
-  logger.next("On the other machine:  boot env key receive");
+  logger.success("Saved a passphrase-protected key in the workspace map.");
+  logger.next("On the other machine, open the workspace and run: boot env key receive");
 }
 
 /**
- * `boot env key receive` — pull the escrowed key from the map and unwrap it with
+ * `boot env key receive` — read a shared key from the map and decrypt it with
  * the passphrase, installing it locally.
  */
 export async function envKeyReceive(
@@ -331,13 +376,14 @@ export async function envKeyReceive(
   const root = resolveRoot(opts);
   requireLinked(root);
 
-  const transport = await loadTransport(root);
-  await transport.pull();
-
-  const entry = latestEntry(await readKeyring(mapPaths(root).mapDir));
+  const entry = await withWorkspaceMapLock(root, async () => {
+    const transport = await loadTransport(root);
+    await transport.pull();
+    return latestEntry(await readKeyring(mapPaths(root).mapDir));
+  });
   if (!entry) {
     throw new Error(
-      "No escrowed key in the map. Run `boot env key share` on a machine that has the key.",
+      "The workspace map has no shared key. On a machine with the key, open its workspace and run: boot env key share",
     );
   }
 
@@ -346,13 +392,13 @@ export async function envKeyReceive(
 
   const key = unwrapKey(entry.wrapped, passphrase);
   await installKey(key, opts.force);
-  logger.success(`installed secret key at ${colors.cyan(secretKeyPath())}`);
-  logger.info(colors.dim(`(shared by ${entry.label})`));
-  logger.next("Write your synced secrets to disk:  boot env materialize");
+  logger.success(`Installed the secret key at ${colors.cyan(secretKeyPath())}.`);
+  logger.info(colors.dim(`Shared by ${entry.label}.`));
+  logger.next(`Write .env files: boot env materialize -C ${commandArg(root)}`);
 }
 
 /**
- * `boot env key revoke <label>` — prune a stale escrowed-key entry from the
+ * `boot env key revoke <label>` — remove a stale shared-key entry from the
  * keyring in the map (e.g. a machine you no longer use). Note: this only stops
  * *future* unlocks with that entry; machines that already received the key keep
  * it. Rotate the key itself if it may be compromised.
@@ -362,21 +408,26 @@ export async function envKeyRevoke(label: string, opts: EnvCommonOptions = {}): 
   const root = resolveRoot(opts);
   requireLinked(root);
 
-  const transport = await loadTransport(root);
-  await transport.pull();
-
-  const mapDir = mapPaths(root).mapDir;
-  const removed = await removeKeyringEntry(mapDir, label);
+  const result = await withWorkspaceMapLock(root, async () => {
+    const transport = await loadTransport(root);
+    await transport.pull();
+    const mapDir = mapPaths(root).mapDir;
+    const removed = await removeKeyringEntry(mapDir, label);
+    const labels = removed === 0 ? await listKeyringLabels(mapDir) : [];
+    if (removed > 0) await transport.push(`env: revoke wrapped key "${label}"`);
+    return { removed, labels };
+  });
+  const { removed, labels } = result;
   if (removed === 0) {
-    const labels = await listKeyringLabels(mapDir);
-    logger.warn(`no keyring entry labelled "${label}".`);
-    if (labels.length > 0) logger.info(colors.dim(`   escrowed: ${labels.join(", ")}`));
-    else logger.info(colors.dim("   the keyring is empty."));
+    logger.warn(`No shared key is labeled "${label}".`);
+    if (labels.length > 0) logger.info(colors.dim(`   Shared keys: ${labels.join(", ")}`));
+    else logger.info(colors.dim("   The workspace map has no shared keys."));
     return;
   }
 
-  await transport.push(`env: revoke wrapped key "${label}"`);
-  logger.success(`revoked ${removed} keyring entr${removed === 1 ? "y" : "ies"} for "${label}"`);
+  logger.success(
+    `Removed ${removed} shared key ${removed === 1 ? "entry" : "entries"} for "${label}".`,
+  );
 }
 
 /** Prompt for a new passphrase twice and confirm they match. */

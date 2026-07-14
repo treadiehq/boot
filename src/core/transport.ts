@@ -10,6 +10,11 @@ import {
   gitPush,
 } from "./git";
 import { mapPaths, readLinkConfig } from "./map";
+import {
+  fileReadError,
+  isFileNotFoundError,
+  quoteUserValue,
+} from "./userErrors";
 
 /**
  * A transport persists and shares "the map" — the small bundle of metadata that
@@ -83,7 +88,9 @@ export class FolderTransport implements MapTransport {
 export async function cloneMap(remoteUrl: string, mapDir: string): Promise<GitMapTransport> {
   await ensureGitAvailable();
   if (existsSync(mapDir)) {
-    throw new Error(`Map directory already exists: ${mapDir}`);
+    throw new Error(
+      `Workspace data directory ${quoteUserValue(mapDir, 500)} already exists. Choose an unlinked workspace or remove the existing link before retrying.`,
+    );
   }
   await cloneRepo(remoteUrl, mapDir);
   return new GitMapTransport(mapDir);
@@ -96,7 +103,9 @@ export async function cloneMap(remoteUrl: string, mapDir: string): Promise<GitMa
  */
 export async function initFolderMap(folder: string, mapDir: string): Promise<FolderTransport> {
   if (existsSync(mapDir)) {
-    throw new Error(`Map directory already exists: ${mapDir}`);
+    throw new Error(
+      `Workspace data directory ${quoteUserValue(mapDir, 500)} already exists. Choose an unlinked workspace or remove the existing link before retrying.`,
+    );
   }
   await fs.mkdir(mapDir, { recursive: true });
   const transport = new FolderTransport(mapDir, path.resolve(folder));
@@ -128,8 +137,9 @@ async function listFilesRel(dir: string): Promise<string[]> {
     let entries;
     try {
       entries = await fs.readdir(path.join(dir, rel), { withFileTypes: true });
-    } catch {
-      return;
+    } catch (error) {
+      if (isFileNotFoundError(error)) return;
+      throw fileReadError("synced workspace folder", path.join(dir, rel), error);
     }
     for (const entry of entries) {
       const childRel = rel ? path.join(rel, entry.name) : entry.name;
@@ -146,7 +156,10 @@ function isIcloudStub(rel: string): boolean {
 }
 
 function formatRelList(files: string[]): string {
-  const shown = files.slice(0, 5).join(", ");
+  const shown = files
+    .slice(0, 5)
+    .map((file) => quoteUserValue(file))
+    .join(", ");
   const remaining = files.length - 5;
   return remaining > 0 ? `${shown}, and ${remaining} more` : shown;
 }
@@ -156,7 +169,7 @@ async function assertNoIcloudStubs(dir: string, action: string): Promise<void> {
   if (stubs.length === 0) return;
 
   throw new Error(
-    `Refusing to ${action}: found iCloud placeholder file(s) in ${dir}: ` +
+    `Cannot ${action} because iCloud has not downloaded every file in ${quoteUserValue(dir, 500)}: ` +
       `${formatRelList(stubs)}. Wait for iCloud to download the files, then retry.`,
   );
 }

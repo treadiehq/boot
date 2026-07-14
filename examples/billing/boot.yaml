@@ -1,0 +1,89 @@
+schemaVersion: 1
+
+workspace:
+  id: acme/billing
+  name: Billing
+  description: Multi-repository billing development workspace
+
+repositories:
+  web:
+    url: https://github.com/acme/web.git
+    path: web
+    role: customer billing UI
+    ref: main
+  billing:
+    url: https://github.com/acme/billing-service.git
+    path: services/billing
+    role: invoices, subscriptions, and payment orchestration
+    ref: main
+  sdk:
+    url: https://github.com/acme/sdk.git
+    path: packages/sdk
+    role: shared billing API client
+    ref: main
+
+tools:
+  node: "24"
+  pnpm: "10"
+
+services:
+  postgres:
+    type: postgres
+    version: "17"
+    description: local billing database
+
+commands:
+  setup:
+    run: pnpm install
+    repository: billing
+  dev:
+    run: pnpm dev
+    repository: billing
+  test:
+    run: pnpm test
+    repository: billing
+
+env:
+  required:
+    - name: STRIPE_API_KEY
+      secret: true
+      source: boot
+    - name: DATABASE_URL
+      secret: true
+      source: boot
+    - name: BILLING_WEBHOOK_SECRET
+      secret: true
+      source: boot
+    - NODE_ENV
+
+constraints:
+  - Never run tests against production billing data
+  - Do not change the shared SDK contract without updating its compatibility tests
+
+profiles:
+  local:
+    repositories: all
+    tools: all
+    services: all
+    commands: all
+    env: all
+    hydrate: manual
+  agent:
+    repositories:
+      - web
+      - billing
+      - sdk
+    tools: all
+    services:
+      - postgres
+    commands:
+      - test
+    env:
+      - STRIPE_API_KEY
+      - DATABASE_URL
+      - BILLING_WEBHOOK_SECRET
+      - NODE_ENV
+    hydrate: eager
+
+defaults:
+  profile: local

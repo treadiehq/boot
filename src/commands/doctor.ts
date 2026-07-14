@@ -77,20 +77,20 @@ export async function doctorCommand(
     staleAfterDays: result.config.staleAfterDays,
   });
 
-  logger.heading("boot Doctor");
-  logger.info(`Workspace: ${colors.cyan(result.rootName)}`);
+  logger.heading("workspace check");
+  logger.info(`workspace: ${colors.cyan(result.rootName)}`);
 
   if (report.warnings.length === 0) {
-    logger.success("no issues found");
+    logger.success("No problems found.");
   } else {
-    logger.info(colors.bold("Warnings:"));
+    logger.info(colors.bold("Warnings"));
     for (const warning of report.warnings) {
       logger.warn(warning);
     }
   }
 
-  logger.info(colors.bold("Summary:"));
-  logger.info(`Repos checked: ${report.reposChecked}`);
+  logger.info(colors.bold("Summary"));
+  logger.info(`Repositories checked: ${report.reposChecked}`);
   logger.info(`Placeholders checked: ${report.placeholdersChecked}`);
   logger.info(`Diverged from upstream: ${report.divergedCount}`);
   logger.info(`Warnings: ${report.warnings.length}`);

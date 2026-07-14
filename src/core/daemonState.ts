@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import { mapPaths } from "./map";
+import { fileReadError, isFileNotFoundError, quoteUserValue } from "./userErrors";
 
 /** Machine-local daemon state file (sibling of link.json, never synced). */
 export const DAEMON_STATE_FILE = "daemon.json";
@@ -39,13 +40,29 @@ function statePath(root: string): string {
 }
 
 export async function readDaemonState(root: string): Promise<DaemonState | null> {
+  const filePath = statePath(root);
+  let raw: string;
   try {
-    const raw = await fs.readFile(statePath(root), "utf8");
-    const parsed = daemonStateSchema.safeParse(JSON.parse(raw));
-    return parsed.success ? parsed.data : null;
-  } catch {
-    return null;
+    raw = await fs.readFile(filePath, "utf8");
+  } catch (error) {
+    if (isFileNotFoundError(error)) return null;
+    throw fileReadError("daemon state", filePath, error);
   }
+  let data: unknown;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    throw new Error(
+      `Daemon state at ${quoteUserValue(filePath, 500)} is not valid JSON. Delete the file, then start the daemon again.`,
+    );
+  }
+  const parsed = daemonStateSchema.safeParse(data);
+  if (!parsed.success) {
+    throw new Error(
+      `Daemon state at ${quoteUserValue(filePath, 500)} has an invalid format. Delete the file, then start the daemon again.`,
+    );
+  }
+  return parsed.data;
 }
 
 export async function writeDaemonState(root: string, state: DaemonState): Promise<void> {

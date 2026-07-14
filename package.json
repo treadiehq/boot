@@ -1,7 +1,7 @@
 {
   "name": "boot",
-  "version": "0.2.6",
-  "description": "Put the same repo layout on every machine. Repos appear instantly and clone when opened.",
+  "version": "0.2.7",
+  "description": "Your workspace, wherever you work.",
   "type": "module",
   "bin": {
     "boot": "./dist/index.js"
@@ -23,6 +23,8 @@
     "cli",
     "git",
     "workspace",
+    "coding-agents",
+    "environment",
     "developer-tools",
     "boot"
   ],

@@ -120,14 +120,22 @@ fatal: could not read Username for 'https://github.com': terminal prompts disabl
     ghAvailableMock.mockResolvedValue(true);
     interactiveMock.mockReturnValue(true);
     confirmMock.mockResolvedValue(false);
-    await expect(ensureMapRemoteExists(remote)).rejects.toThrow(/Map remote not found/);
+    await expect(ensureMapRemoteExists(remote)).rejects.toThrow(
+      new Error(
+        `No workspace map found at ${remote}.\nCreate it and link this workspace: boot link ${remote} . --yes`,
+      ),
+    );
     expect(ghCreateMock).not.toHaveBeenCalled();
   });
 
-  it("throws with the gh command when non-interactive without --yes", async () => {
+  it("throws with a boot link retry when non-interactive without --yes", async () => {
     probeMock.mockResolvedValue({ ok: false, detail: "ERROR: Repository not found." });
     ghAvailableMock.mockResolvedValue(true);
-    await expect(ensureMapRemoteExists(remote)).rejects.toThrow(/gh repo create me\/code-map --private/);
+    await expect(ensureMapRemoteExists(remote)).rejects.toThrow(
+      new Error(
+        `No workspace map found at ${remote}.\nCreate it and link this workspace: boot link ${remote} . --yes`,
+      ),
+    );
   });
 
   it("throws with manual instructions when gh is unavailable", async () => {
@@ -139,8 +147,11 @@ fatal: could not read Username for 'https://github.com': terminal prompts disabl
 
   it("throws host-agnostic instructions for non-GitHub remotes", async () => {
     probeMock.mockResolvedValue({ ok: false, detail: "repository does not exist" });
-    await expect(ensureMapRemoteExists("git@gitlab.com:me/map.git")).rejects.toThrow(
-      /create an empty private repo on your git host/,
+    const gitLabRemote = "git@gitlab.com:me/map.git";
+    await expect(ensureMapRemoteExists(gitLabRemote)).rejects.toThrow(
+      new Error(
+        `No workspace map found at ${gitLabRemote}.\nCreate an empty private repository there, then run: boot link ${gitLabRemote} .`,
+      ),
     );
     expect(ghAvailableMock).not.toHaveBeenCalled();
   });

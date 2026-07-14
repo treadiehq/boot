@@ -1,6 +1,13 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
+import { portableRelativePathSchema } from "./pathUtils";
+import {
+  fileReadError,
+  isFileNotFoundError,
+  quoteUserValue,
+  shellQuoteUserValue,
+} from "./userErrors";
 
 export const MANIFEST_VERSION = "0.2" as const;
 
@@ -17,7 +24,7 @@ export const hydrateSchema = z.object({
 
 export const repoSchema = z.object({
   name: z.string(),
-  relativePath: z.string(),
+  relativePath: portableRelativePathSchema,
   absolutePath: z.string(),
   remoteUrl: z.string().nullable(),
   currentBranch: z.string().nullable(),
@@ -85,8 +92,9 @@ export async function writeManifest(filePath: string, manifest: BootManifest): P
 
 function formatIssues(error: z.ZodError): string {
   return error.issues
-    .map((issue) => `  - ${issue.path.join(".") || "(root)"}: ${issue.message}`)
-    .join("\n");
+    .slice(0, 5)
+    .map((issue) => `${issue.path.join(".") || "root"}: ${issue.message}`)
+    .join("; ");
 }
 
 /** Read, JSON-parse, and validate a snapshot file against the current schema. */
@@ -96,20 +104,29 @@ export async function readManifest(filePath: string): Promise<BootManifest> {
   let raw: string;
   try {
     raw = await fs.readFile(abs, "utf8");
-  } catch {
-    throw new Error(`Manifest not found: ${abs}`);
+  } catch (error) {
+    if (isFileNotFoundError(error)) {
+      throw new Error(
+        `No snapshot was found at ${quoteUserValue(abs, 500)}. From the workspace root, create one with \`boot export . --output ${shellQuoteUserValue(abs)}\`.`,
+      );
+    }
+    throw fileReadError("manifest", abs, error);
   }
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    throw new Error(`Manifest is not valid JSON: ${abs}`);
+    throw new Error(
+      `Snapshot at ${quoteUserValue(abs, 500)} is not valid JSON. From the workspace root, create a new one with \`boot export . --output ${shellQuoteUserValue(abs)}\`.`,
+    );
   }
 
   const result = manifestSchema.safeParse(parsed);
   if (!result.success) {
-    throw new Error(`Manifest failed validation: ${abs}\n${formatIssues(result.error)}`);
+    throw new Error(
+      `Snapshot at ${quoteUserValue(abs, 500)} has an invalid format (${formatIssues(result.error)}). From the workspace root, create a new one with \`boot export . --output ${shellQuoteUserValue(abs)}\`.`,
+    );
   }
   return result.data;
 }

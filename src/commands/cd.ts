@@ -19,6 +19,12 @@ export interface CdOptions {
 /** Max repos to show in the interactive browse list. */
 const BROWSE_LIMIT = 30;
 
+function commandArg(value: string): string {
+  if (/^[A-Za-z0-9_./:@%+=,-]+$/.test(value)) return value;
+  if (process.platform === "win32") return `'${value.replace(/'/g, "''")}'`;
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
 /**
  * Resolve a repo in the map by fuzzy query, hydrate it if it's still a
  * placeholder, and surface its absolute path. The path is the product: the
@@ -38,13 +44,17 @@ export async function cdCommand(query = "", options: CdOptions = {}): Promise<vo
 
   const choices = await loadRepoChoices(root);
   if (choices.length === 0) {
-    throw new Error(`No repos in the map for ${root}. Run \`boot pull ${root}\` first.`);
+    throw new Error(
+      `The workspace map has no repositories. Pull it again with: boot pull ${commandArg(root)}`,
+    );
   }
 
   const ranked = rankRepos(query, choices);
   if (ranked.length === 0) {
     throw new Error(
-      `No repo matches "${query}". Run \`boot cd\` to browse, or \`boot status ${root}\` to list them.`,
+      `No repository matches "${query}". Browse with \`boot cd -C ${commandArg(
+        root,
+      )}\`, or list them with: boot status ${commandArg(root)}`,
     );
   }
 
@@ -52,17 +62,17 @@ export async function cdCommand(query = "", options: CdOptions = {}): Promise<vo
 
   if (!existsSync(target.absolutePath)) {
     throw new Error(
-      `${target.relativePath} isn't on this machine yet. Run \`boot pull ${root}\` to recreate it.`,
+      `${target.relativePath} is missing. Prepare it again with: boot pull ${commandArg(root)}`,
     );
   }
 
   let hydrated = false;
   if (isPlaceholder(target.absolutePath)) {
-    note(colors.dim(`hydrating ${target.relativePath}…`));
+    note(colors.dim(`cloning ${target.relativePath}…`));
     const outcome = await hydratePlaceholder(target.absolutePath);
     hydrated = true;
     if (outcome === "hydrated-checkout-failed") {
-      note(colors.yellow(`could not checkout the recorded branch for ${target.relativePath}`));
+      note(colors.yellow(`cloned ${target.relativePath}, but could not check out its saved branch`));
     }
   }
 
@@ -75,7 +85,7 @@ function resolveWorkspaceRoot(cwd: string): string {
   const root = findWorkspaceRoot(start);
   if (!root) {
     throw new Error(
-      `No boot workspace at or above ${start}. Link one with \`boot link <remote> <path>\` first.`,
+      `No linked workspace found at or above ${start}. Run \`boot link --help\` to link one.`,
     );
   }
   return root;
@@ -89,10 +99,10 @@ function resolveWorkspaceRoot(cwd: string): string {
 async function pickRepo(ranked: RankedRepo[], query: string): Promise<RankedRepo> {
   if (query.trim().length > 0) return ranked[0]!;
   if (!isInteractive()) {
-    throw new Error("Provide a repo to jump to, e.g. `boot cd <name>`.");
+    throw new Error("Provide a repository name: boot cd <name>");
   }
   return select(
-    "Jump to which repo?",
+    "Jump to which repository?",
     ranked.slice(0, BROWSE_LIMIT).map((repo) => ({ label: repo.relativePath, value: repo })),
     { default: 0 },
   );
@@ -115,7 +125,7 @@ function emit(target: RankedRepo, hydrated: boolean, options: CdOptions): void {
     return;
   }
   // Human mode can't move the parent shell, so show the path and how to jump.
-  logger.success(`${colors.cyan(target.relativePath)}${hydrated ? colors.dim(" (hydrated)") : ""}`);
+  logger.success(`${colors.cyan(target.relativePath)}${hydrated ? colors.dim(" (cloned)") : ""}`);
   logger.info(target.absolutePath);
-  logger.next("Add the shell hook (`boot shell-hook`) for a `bcd <name>` that cd's for you.");
+  logger.next("Set up the `bcd` shell shortcut: boot shell-hook --help");
 }

@@ -1,0 +1,76 @@
+schemaVersion: 1
+
+workspace:
+  id: acme/undo
+  name: Undo
+  description: One workspace for local development, agents, and CI
+
+repositories:
+  undo:
+    url: https://github.com/acme/undo.git
+    path: undo
+    role: core recovery CLI
+    ref: main
+  docs:
+    url: https://github.com/acme/undo-docs.git
+    path: docs
+    role: product documentation
+    ref: main
+  benchmarks:
+    url: https://github.com/acme/undo-benchmarks.git
+    path: benchmarks
+    role: recovery correctness and performance suite
+    ref: main
+
+tools:
+  node: "24"
+  pnpm: "10"
+
+commands:
+  setup:
+    run: pnpm install
+    repository: undo
+  dev:
+    run: pnpm dev
+    repository: undo
+  test:
+    run: pnpm test
+    repository: undo
+  benchmark:
+    run: pnpm benchmark
+    repository: benchmarks
+
+constraints:
+  - Benchmarks are read-only unless the task explicitly requests benchmark changes
+
+profiles:
+  local:
+    repositories: all
+    commands: all
+    hydrate: manual
+  agent:
+    repositories:
+      - undo
+      - benchmarks
+    commands:
+      - test
+      - benchmark
+    hydrate: eager
+  ci:
+    repositories:
+      - undo
+      - benchmarks
+    commands:
+      - test
+      - benchmark
+    hydrate: eager
+  review:
+    repositories:
+      - undo
+    commands:
+      - test
+    hydrate: eager
+    readOnly: true
+
+defaults:
+  profile: local

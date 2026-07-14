@@ -88,9 +88,9 @@ describe("doctorCommand", () => {
 
     const output = lines.join("\n");
     expect(output).toContain(
-      "apps/broken/.boot/repo.json is invalid; placeholder branch checks were skipped",
+      "apps/broken/.boot/repo.json is invalid; repository branch checks were skipped. Run `boot pull` from the workspace root to recreate it",
     );
-    expect(output).toContain("Repos checked: 2");
+    expect(output).toContain("Repositories checked: 2");
     expect(output).toContain("Warnings: 1");
     expect(readPlaceholderMock).toHaveBeenCalledOnce();
   });

@@ -98,7 +98,7 @@ describe("restore --lazy", () => {
     expect(existsSync(path.join(repoDir, ".git"))).toBe(false);
   });
 
-  it("marks a repo with no remote URL as not hydratable", async () => {
+  it("marks a repository with no remote URL as unable to clone", async () => {
     const file = await manifestFile([
       repo({ name: "local-tool", relativePath: "old/local-tool", remoteUrl: null }),
     ]);
@@ -109,10 +109,13 @@ describe("restore --lazy", () => {
     const repoDir = path.join(target, "old/local-tool");
     const meta = await readPlaceholder(repoDir);
     expect(meta?.remoteUrl).toBeNull();
-    expect(logs.join("\n")).toMatch(/not hydratable/);
+    expect(logs.join("\n")).toContain(
+      "old/local-tool has no remote, so its placeholder cannot clone it.",
+    );
+    expect(logs.join("\n")).toContain("Cannot clone because no remote is set: 1");
   });
 
-  it("skips a folder that is already a real git repo (already hydrated)", async () => {
+  it("skips a folder whose repository is already cloned", async () => {
     const file = await manifestFile([repo({ relativePath: "apps/kplane" })]);
     const target = path.join(dir, "restored");
     const repoDir = path.join(target, "apps/kplane");
@@ -122,7 +125,8 @@ describe("restore --lazy", () => {
 
     // No placeholder metadata was written into the real repo.
     expect(isPlaceholder(repoDir)).toBe(false);
-    expect(logs.join("\n")).toMatch(/already hydrated/);
+    expect(logs.join("\n")).toContain("apps/kplane is already cloned.");
+    expect(logs.join("\n")).toContain("Already cloned: 1");
   });
 
   it("preserves an existing placeholder without rewriting it", async () => {
@@ -137,7 +141,8 @@ describe("restore --lazy", () => {
     const secondCreatedAt = (await readPlaceholder(repoDir))?.createdAt;
 
     expect(secondCreatedAt).toBe(firstCreatedAt);
-    expect(logs.join("\n")).toMatch(/placeholder already exists/);
+    expect(logs.join("\n")).toContain("apps/kplane already has a placeholder.");
+    expect(logs.join("\n")).toContain("Existing placeholders: 1");
   });
 });
 

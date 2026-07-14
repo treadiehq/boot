@@ -16,7 +16,7 @@ export function renderShellHook(shell: SupportedShell): string {
 function renderAutohydrateHook(shell: SupportedShell): string {
   switch (shell) {
     case "zsh":
-      return `# boot on-access hydration (zsh) — add to ~/.zshrc:  eval "$(boot shell-hook zsh)"
+      return `# boot: clone repository placeholders on access (zsh) — add to ~/.zshrc:  eval "$(boot shell-hook zsh)"
 _boot_autohydrate() {
   command boot enter "$PWD" --quiet >/dev/null 2>&1 &!
 }
@@ -26,7 +26,7 @@ if (( $+functions[add-zsh-hook] )); then
 fi
 `;
     case "bash":
-      return `# boot on-access hydration (bash) — add to ~/.bashrc:  eval "$(boot shell-hook bash)"
+      return `# boot: clone repository placeholders on access (bash) — add to ~/.bashrc:  eval "$(boot shell-hook bash)"
 _boot_autohydrate() {
   command boot enter "$PWD" --quiet >/dev/null 2>&1 &
 }
@@ -36,13 +36,13 @@ case ";\${PROMPT_COMMAND};" in
 esac
 `;
     case "fish":
-      return `# boot on-access hydration (fish) — add to ~/.config/fish/config.fish:  boot shell-hook fish | source
+      return `# boot: clone repository placeholders on access (fish) — add to ~/.config/fish/config.fish:  boot shell-hook fish | source
 function _boot_autohydrate --on-variable PWD
     command boot enter "$PWD" --quiet >/dev/null 2>&1 &
 end
 `;
     case "powershell":
-      return `# boot on-access hydration (PowerShell) — add to $PROFILE:  Invoke-Expression (& boot shell-hook powershell | Out-String)
+      return `# boot: clone repository placeholders on access (PowerShell) — add to $PROFILE:  Invoke-Expression (& boot shell-hook powershell | Out-String)
 if (-not $global:__BootPromptHooked) {
   $global:__BootPromptHooked = $true
   $global:__BootLastPwd = $null
@@ -68,7 +68,7 @@ function renderJumpFunction(shell: SupportedShell): string {
   switch (shell) {
     case "zsh":
     case "bash":
-      return `# boot quick-jump: \`bcd <name>\` cd's to (and hydrates) a repo in your map
+      return `# boot quick-jump: \`bcd <name>\` opens a repository and clones its placeholder
 bcd() {
   local _dir
   _dir="$(command boot cd --print "$@")" || return
@@ -76,14 +76,14 @@ bcd() {
 }
 `;
     case "fish":
-      return `# boot quick-jump: \`bcd <name>\` cd's to (and hydrates) a repo in your map
-function bcd --description 'boot quick-jump to a repo'
+      return `# boot quick-jump: \`bcd <name>\` opens a repository and clones its placeholder
+function bcd --description 'boot quick-jump to a repository'
     set -l _dir (command boot cd --print $argv); or return
     test -n "$_dir"; and cd $_dir
 end
 `;
     case "powershell":
-      return `# boot quick-jump: \`bcd <name>\` cd's to (and hydrates) a repo in your map
+      return `# boot quick-jump: \`bcd <name>\` opens a repository and clones its placeholder
 function bcd {
   $dir = & boot cd --print @args
   if ($LASTEXITCODE -eq 0 -and $dir) { Set-Location $dir }
@@ -100,9 +100,7 @@ export function shellHookCommand(shell?: string): void {
     throw new Error(`Unsupported shell "${shell}". Supported: ${SHELLS.join(", ")}.`);
   }
   if (!resolved) {
-    throw new Error(
-      `Could not detect your shell. Run \`boot shell-hook <${SHELLS.join("|")}>\` explicitly.`,
-    );
+    throw new Error("Could not detect your shell. Choose one with: boot shell-hook --help");
   }
 
   logger.info(renderShellHook(resolved));

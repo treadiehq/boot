@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  boot installer for Windows — download a prebuilt binary and put it on your PATH.
+  Download boot for Windows and install it on PATH.
 
 .DESCRIPTION
   Run it directly from the web:
@@ -24,9 +24,9 @@ $repo    = if ($env:BOOT_REPO)    { $env:BOOT_REPO }    else { 'treadiehq/boot' 
 $version = if ($env:BOOT_VERSION) { $env:BOOT_VERSION } else { 'latest' }
 $binDir  = if ($env:BOOT_BIN_DIR) { $env:BOOT_BIN_DIR } else { Join-Path $env:LOCALAPPDATA 'boot\bin' }
 
-# Bun only ships a Windows x64 binary; it runs on ARM64 via emulation.
+# Boot currently publishes a Windows x64 binary, which Windows ARM64 runs through emulation.
 if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') {
-  Say "ARM64 detected — installing the x64 binary (runs under emulation)."
+  Say "ARM64 detected; installing the x64 binary through Windows emulation."
 }
 
 $asset = 'boot-windows-x64.exe'
@@ -43,12 +43,12 @@ $old  = "$dest.old"
 # Clean up a stale copy left behind by a previous self-update, if it's no longer locked.
 if (Test-Path $old) { try { Remove-Item $old -Force -ErrorAction Stop } catch {} }
 
-Say "downloading $asset ($version)"
+Say "Downloading $asset ($version)..."
 $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("boot-" + [guid]::NewGuid().ToString('N') + '.exe')
 try {
   Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing
 } catch {
-  Die "download failed: $url`n  - no release asset for Windows yet, or`n  - the version tag does not exist (check: https://github.com/$repo/releases)"
+  Die "Could not download $url`nCheck your network connection and available releases: https://github.com/$repo/releases"
 }
 
 # Windows locks a running .exe, but it can still be renamed — move the old one
@@ -61,9 +61,9 @@ Move-Item -Path $tmp -Destination $dest -Force
 try {
   $installed = (& $dest --version).Trim()
 } catch {
-  Die "the installed binary failed to run ($dest)"
+  Die "The installed binary could not run: $dest"
 }
-Ok "installed boot $installed -> $dest"
+Ok "Installed boot $installed at $dest"
 
 # --- ensure the install dir is on the user PATH ------------------------------
 $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
@@ -72,11 +72,11 @@ if (-not $onPath) {
   $newPath = if ([string]::IsNullOrEmpty($userPath)) { $binDir } else { "$userPath;$binDir" }
   [Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
   $env:Path = "$env:Path;$binDir"
-  Say "added $binDir to your user PATH (restart terminals to pick it up)."
+  Say "Added $binDir to your user PATH. New terminals will use it automatically."
 }
 
 Write-Host ""
-Ok "boot installed. Get started with:"
-Write-Host "    boot setup <map-remote> $env:USERPROFILE\code" -ForegroundColor White
+Ok "Boot is installed. Initialize a workspace with:"
+Write-Host "    boot init" -ForegroundColor White
 Write-Host ""
-Write-Host "Update later with:  boot update" -ForegroundColor DarkGray
+Write-Host "Update later:  boot update" -ForegroundColor DarkGray

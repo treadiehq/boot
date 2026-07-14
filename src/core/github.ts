@@ -1,4 +1,5 @@
 import { execa } from "execa";
+import { quoteUserValue, subprocessFailureReason } from "./userErrors";
 
 /**
  * GitHub-specific helpers that smooth onboarding: when a map remote doesn't
@@ -47,15 +48,35 @@ export async function ghAvailable(): Promise<boolean> {
   }
 }
 
-/** Create a private GitHub repo with `gh repo create`. Throws with gh's message on failure. */
+/** Create a private GitHub repo with `gh repo create`. */
 export async function ghCreatePrivateRepo(slug: string): Promise<void> {
   let res;
   try {
-    res = await execa("gh", ["repo", "create", slug, "--private"], { reject: false });
+    res = await execa("gh", ["repo", "create", slug, "--private"], {
+      reject: false,
+      stdin: "ignore",
+      timeout: 120_000,
+      env: { ...process.env, GH_PROMPT_DISABLED: "1" },
+    });
   } catch (err) {
-    throw new Error(`gh repo create failed: ${(err as Error).message}`);
+    if ((err as NodeJS.ErrnoException)?.code === "ENOENT") {
+      throw new Error(
+        "GitHub CLI was not found. Install `gh`, sign in with `gh auth login`, then retry.",
+      );
+    }
+    const reason = subprocessFailureReason((err as Error).message);
+    throw new Error(
+      `Could not create GitHub repository ${quoteUserValue(slug)}.` +
+        (reason ? ` Reason: ${reason.replace(/[.!?]+$/, "")}.` : "") +
+        " Run `gh auth status`, fix the reported access problem, then retry.",
+    );
   }
   if (res.exitCode !== 0) {
-    throw new Error(`gh repo create failed: ${String(res.stderr || res.stdout).trim()}`);
+    const reason = subprocessFailureReason(res.stderr || res.stdout);
+    throw new Error(
+      `Could not create GitHub repository ${quoteUserValue(slug)}.` +
+        (reason ? ` Reason: ${reason.replace(/[.!?]+$/, "")}.` : "") +
+        " Run `gh auth status`, fix the reported access problem, then retry.",
+    );
   }
 }

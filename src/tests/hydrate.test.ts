@@ -110,8 +110,9 @@ describe("hydrateCommand", () => {
 
     const output = await captureLogs(() => hydrateCommand(repoDir));
 
-    expect(output).toContain("could not checkout the recorded branch");
-    expect(output).not.toContain("start working");
+    expect(output).toContain("Repository cloned, but its saved branch could not be checked out.");
+    expect(output).toContain(`Open the repository and check its branch: cd ${repoDir}`);
+    expect(output).not.toContain(`Open the repository: cd ${repoDir}`);
   });
 
   it("returns a distinct outcome when clone succeeds but checkout fails", async () => {
@@ -144,15 +145,24 @@ describe("hydrateCommand", () => {
   it("throws when the folder is not a placeholder", async () => {
     const plain = path.join(root, "plain");
     await fs.mkdir(plain, { recursive: true });
+    const label = path.relative(process.cwd(), plain) || plain;
 
-    await expect(hydrateCommand(plain)).rejects.toThrow(/not a boot placeholder/);
+    await expect(hydrateCommand(plain)).rejects.toThrow(
+      new Error(
+        `"${label}" does not contain repository download information (.boot/repo.json). Run \`boot pull\` from the workspace root to recreate it.`,
+      ),
+    );
     expect(cloneMock).not.toHaveBeenCalled();
   });
 
   it("throws when the placeholder has no remote URL", async () => {
     const repoDir = await makePlaceholder("old/local-tool", null);
 
-    await expect(hydrateCommand(repoDir)).rejects.toThrow(/not hydratable/);
+    await expect(hydrateCommand(repoDir)).rejects.toThrow(
+      new Error(
+        'Repository "local-tool" has no URL, so it cannot be downloaded. Add its URL to `boot.yaml`, then run `boot up .` from the workspace root.',
+      ),
+    );
     expect(cloneMock).not.toHaveBeenCalled();
   });
 
@@ -160,7 +170,11 @@ describe("hydrateCommand", () => {
     const repoDir = await makePlaceholder("apps/flaky", "git@example.com:flaky.git");
     cloneMock.mockRejectedValue(new Error("network down"));
 
-    await expect(hydrateCommand(repoDir)).rejects.toThrow(/Clone failed/);
+    await expect(hydrateCommand(repoDir)).rejects.toThrow(
+      new Error(
+        "Could not download the repository; the existing folder was left unchanged. network down Fix the reported problem, then retry.",
+      ),
+    );
 
     // Placeholder metadata is untouched and the folder is not a git repo.
     const meta = await readPlaceholder(repoDir);

@@ -24,8 +24,8 @@ export async function enterCommand(targetPath = ".", options: EnterOptions = {})
 
   if (result.hydrated && result.repoDir) {
     const label = root ? path.relative(root, result.repoDir) : result.repoDir;
-    logger.success(`hydrated ${colors.cyan(label || ".")}`);
+    logger.success(`cloned ${colors.cyan(label || ".")}`);
   } else {
-    logger.info(colors.dim("nothing to hydrate here."));
+    logger.info(colors.dim("No repository placeholder found."));
   }
 }

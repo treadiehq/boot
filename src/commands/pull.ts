@@ -1,6 +1,8 @@
 import path from "node:path";
 import { ensureGitAvailable } from "../core/git";
+import { detectShell, hookEvalLine } from "../core/health";
 import { loadMachineIdentity } from "../core/identity";
+import { withWorkspaceMapLock } from "../core/lock";
 import {
   isLinked,
   mapPaths,
@@ -20,6 +22,12 @@ export interface PullOptions {
   dryRun?: boolean;
 }
 
+function commandArg(value: string): string {
+  if (/^[A-Za-z0-9_./:@%+=,-]+$/.test(value)) return value;
+  if (process.platform === "win32") return `'${value.replace(/'/g, "''")}'`;
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
 /**
  * Fetch the shared map and recreate any structure missing on this machine
  * (placeholders by default, clones with `--eager`).
@@ -29,51 +37,89 @@ export async function pullCommand(workspacePath = ".", options: PullOptions = {}
 
   const root = path.resolve(workspacePath);
   if (!isLinked(root)) {
-    throw new Error(`${root} is not linked. Run \`boot link <remote> ${workspacePath}\` first.`);
+    throw new Error(
+      `This workspace is not linked. Run: boot link <map-remote> ${commandArg(root)}`,
+    );
   }
 
-  logger.heading(`Pulling the map into ${colors.cyan(root)}`);
+  logger.heading(`Update workspace map — ${colors.cyan(root)}`);
 
-  const identity = await loadMachineIdentity();
   const paths = mapPaths(root);
   const transport = await loadTransport(root);
 
-  await transport.pull();
-  logger.success("pulled latest map");
-
-  const map = await readWorkspaceMap(paths.mapDir);
-  if (!map) {
-    logger.warn("the map has no workspace.json yet — nothing to restore.");
-    return;
-  }
-
   if (options.dryRun) {
+    const cachedMap = await readWorkspaceMap(paths.mapDir);
+    if (!cachedMap) {
+      logger.warn("The cached workspace map is empty, so there is nothing to preview.");
+      return;
+    }
+    logger.info(colors.dim("Dry run: using the cached workspace map without pulling changes."));
     logger.info();
-    const plan = await reconcileFromMap(root, map.repos, { eager: options.eager, dryRun: true });
+    const plan = await reconcileFromMap(root, cachedMap.repos, {
+      eager: options.eager,
+      dryRun: true,
+    });
     renderPlan(plan);
     return;
   }
 
-  const recon = await reconcileFromMap(root, map.repos, {
-    eager: options.eager,
-    hooks: reconcileProgressHooks(),
+  await withWorkspaceMapLock(root, async () => {
+    await transport.pull();
+    logger.success("Pulled the latest workspace map.");
+
+    const map = await readWorkspaceMap(paths.mapDir);
+    if (!map) {
+      logger.warn("The workspace map is empty, so there is nothing to prepare.");
+      return;
+    }
+
+    const identity = await loadMachineIdentity();
+    const recon = await reconcileFromMap(root, map.repos, {
+      eager: options.eager,
+      hooks: reconcileProgressHooks(),
+    });
+    if (recon.placeholders > 0) {
+      logger.success(
+        `Prepared ${recon.placeholders} repository ${
+          recon.placeholders === 1 ? "placeholder" : "placeholders"
+        }. Each placeholder clones its repository on first use.`,
+      );
+    }
+    if (recon.cloned > 0) {
+      logger.success(
+        `Cloned ${recon.cloned} ${recon.cloned === 1 ? "repository" : "repositories"}.`,
+      );
+    }
+
+    // Record this machine's updated state. Best-effort: a failed publish of our
+    // own state shouldn't fail the pull.
+    const scan = await scanWorkspace(root);
+    await writeMachineState(paths.mapDir, machineStateFromScan(identity, root, scan.repos));
+    try {
+      await transport.push(`pull: update ${identity.hostname} state`);
+    } catch (err) {
+      logger.warn(`Could not update this machine in the workspace map: ${(err as Error).message}`);
+    }
+
+    logger.info();
+    logger.success(
+      `Up to date. The workspace map has ${map.repos.length} ${
+        map.repos.length === 1 ? "repository" : "repositories"
+      }.`,
+    );
+    if (!options.eager && recon.placeholders > 0) {
+      const placeholder = scan.repos.find(
+        (repository) => repository.hydrate.status === "placeholder" && repository.remoteUrl,
+      );
+      if (placeholder) {
+        logger.next(`Clone one now: boot hydrate ${commandArg(placeholder.absolutePath)}`);
+      }
+      const shell = detectShell();
+      if (shell) {
+        logger.next(`Clone placeholders on access after adding: ${hookEvalLine(shell)}`);
+      } else {
+        logger.next("Set up clone-on-access for your shell: boot shell-hook --help");
+      }
+    }
   });
-  if (recon.placeholders > 0) logger.success(`created ${recon.placeholders} placeholder(s)`);
-  if (recon.cloned > 0) logger.success(`cloned ${recon.cloned} repo(s)`);
-
-  // Record this machine's updated state. Best-effort: a failed publish of our
-  // own state shouldn't fail the pull.
-  const scan = await scanWorkspace(root);
-  await writeMachineState(paths.mapDir, machineStateFromScan(identity, root, scan.repos));
-  try {
-    await transport.push(`pull: update ${identity.hostname} state`);
-  } catch (err) {
-    logger.warn(`could not publish machine state: ${(err as Error).message}`);
-  }
-
-  logger.info();
-  logger.success(`Up to date. ${map.repos.length} repo(s) in the map.`);
-  if (!options.eager && recon.placeholders > 0) {
-    logger.next('Repos hydrate on access once you add:  eval "$(boot shell-hook zsh)"');
-  }
 }

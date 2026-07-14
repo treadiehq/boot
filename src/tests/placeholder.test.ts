@@ -69,14 +69,17 @@ describe("placeholder write/read", () => {
     expect(readme).toContain("boot hydrate apps/kplane");
   });
 
-  it("notes that a remoteless placeholder is not hydratable", async () => {
+  it("explains that a placeholder without a repository URL cannot be downloaded", async () => {
     const repoDir = path.join(dir, "local-tool");
     await fs.mkdir(repoDir, { recursive: true });
     const meta = buildPlaceholderMeta({ ...source, remoteUrl: null });
     await writePlaceholderReadme(repoDir, meta);
 
     const readme = await fs.readFile(placeholderPaths(repoDir).readmePath, "utf8");
-    expect(readme).toMatch(/no remote URL/i);
+    expect(readme).toContain("No repository URL is recorded, so Boot cannot download it.");
+    expect(readme).toContain(
+      "Add its URL to `boot.yaml`, then run `boot up .` from the workspace root.",
+    );
   });
 
   it("returns null when the folder is not a placeholder", async () => {
@@ -98,6 +101,10 @@ describe("placeholder write/read", () => {
     const { dir: metaDir, jsonPath } = placeholderPaths(repoDir);
     await fs.mkdir(metaDir, { recursive: true });
     await fs.writeFile(jsonPath, JSON.stringify({ name: "x" } satisfies Partial<PlaceholderMeta>));
-    await expect(readPlaceholder(repoDir)).rejects.toThrow(/failed validation/);
+    await expect(readPlaceholder(repoDir)).rejects.toThrow(
+      new Error(
+        `Repository download information at "${jsonPath}" has an invalid format (relativePath: Invalid input: expected string, received undefined; remoteUrl: Invalid input: expected string, received undefined; branch: Invalid input: expected string, received undefined). Run \`boot pull\` from the workspace root to recreate it.`,
+      ),
+    );
   });
 });

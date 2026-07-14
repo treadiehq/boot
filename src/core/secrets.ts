@@ -3,7 +3,13 @@ import fs from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
+import { writeFileAtomic } from "./files";
 import { stateDir } from "./identity";
+import {
+  fileReadError,
+  isFileNotFoundError,
+  quoteUserValue,
+} from "./userErrors";
 
 const ALGORITHM = "aes-256-gcm";
 const KEY_BYTES = 32;
@@ -36,7 +42,9 @@ export function generateKey(): Buffer {
 function decodeKey(raw: string): Buffer {
   const key = Buffer.from(raw.trim(), "base64");
   if (key.length !== KEY_BYTES) {
-    throw new Error(`Invalid boot secret key: expected ${KEY_BYTES} bytes, got ${key.length}.`);
+    throw new Error(
+      `The Boot secret key has an invalid format (expected ${KEY_BYTES} bytes, found ${key.length}). Import a valid key, then retry.`,
+    );
   }
   return key;
 }
@@ -50,11 +58,12 @@ export async function loadKey(): Promise<Buffer> {
   let raw: string;
   try {
     raw = await fs.readFile(secretKeyPath(), "utf8");
-  } catch {
+  } catch (error) {
+    if (!isFileNotFoundError(error)) {
+      throw fileReadError("Boot secret key", secretKeyPath(), error);
+    }
     throw new Error(
-      `No boot secret key found at ${secretKeyPath()}.\n` +
-        "Create one with `boot env init`, or copy the key from a machine that already has it " +
-        "(`boot env key export` there, `boot env key import` here).",
+      `No Boot secret key was found at ${quoteUserValue(secretKeyPath(), 500)}. Create one with \`boot env init\`, or import one with \`boot env key import\`.`,
     );
   }
   return decodeKey(raw);
@@ -64,8 +73,7 @@ export async function loadKey(): Promise<Buffer> {
 export async function loadOrCreateKey(): Promise<{ key: Buffer; created: boolean }> {
   if (keyExists()) return { key: await loadKey(), created: false };
   const key = generateKey();
-  await fs.mkdir(stateDir(), { recursive: true });
-  await fs.writeFile(secretKeyPath(), `${key.toString("base64")}\n`, { mode: 0o600 });
+  await writeFileAtomic(secretKeyPath(), `${key.toString("base64")}\n`, { mode: 0o600 });
   return { key, created: true };
 }
 
@@ -80,8 +88,7 @@ export async function importKeyBase64(base64: string, force = false): Promise<vo
       `A secret key already exists at ${secretKeyPath()}. Re-run with --force to overwrite it.`,
     );
   }
-  await fs.mkdir(stateDir(), { recursive: true });
-  await fs.writeFile(secretKeyPath(), `${key.toString("base64")}\n`, { mode: 0o600 });
+  await writeFileAtomic(secretKeyPath(), `${key.toString("base64")}\n`, { mode: 0o600 });
 }
 
 export function encrypt(plaintext: string, key: Buffer): EncryptedBlob {
@@ -99,7 +106,7 @@ export function encrypt(plaintext: string, key: Buffer): EncryptedBlob {
 }
 
 /* ------------------------------------------------------------------ *
- * Passphrase-wrapped key escrow                                       *
+ * Passphrase-wrapped key storage                                      *
  *                                                                     *
  * Wrap the 32-byte secret key with a passphrase-derived key so it can *
  * ride the synced map safely. Transferring secrets between machines   *
@@ -117,9 +124,9 @@ const SALT_BYTES = 16;
 export const wrappedKeySchema = z.object({
   v: z.literal(1),
   kdf: z.literal("scrypt"),
-  n: z.number(),
-  r: z.number(),
-  p: z.number(),
+  n: z.literal(SCRYPT_N),
+  r: z.literal(SCRYPT_R),
+  p: z.literal(SCRYPT_P),
   salt: z.string(),
   iv: z.string(),
   tag: z.string(),
@@ -174,10 +181,14 @@ export function unwrapKey(blob: WrappedKey, passphrase: string): Buffer {
   try {
     out = Buffer.concat([decipher.update(Buffer.from(blob.data, "base64")), decipher.final()]);
   } catch {
-    throw new Error("Wrong passphrase (could not unwrap the key).");
+    throw new Error(
+      "Could not unlock the shared key. The passphrase is wrong or the saved key data is damaged.",
+    );
   }
   if (out.length !== KEY_BYTES) {
-    throw new Error(`Unwrapped key has wrong length: ${out.length} bytes.`);
+    throw new Error(
+      `The unlocked key has an invalid format (expected ${KEY_BYTES} bytes, found ${out.length}).`,
+    );
   }
   return out;
 }
@@ -199,8 +210,8 @@ export function decrypt(blob: EncryptedBlob, key: Buffer): string {
   } catch {
     // GCM auth failure: wrong key or the ciphertext was modified.
     throw new Error(
-      "Failed to decrypt secrets: wrong key or tampered data. " +
-        `Ensure ${secretKeyPath()} matches the machine that wrote them.`,
+      "Could not decrypt the saved environment values. The key does not match, or the saved data is damaged. " +
+        `Import the matching key at ${quoteUserValue(secretKeyPath(), 500)}, then retry.`,
     );
   }
 }

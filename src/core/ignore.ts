@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { toPosixRelative } from "./pathUtils";
+import { fileReadError, isFileNotFoundError } from "./userErrors";
 
 /** Name of the user-controlled ignore file, at workspace or repo scope. */
 export const IGNORE_FILE_NAME = ".bootignore";
@@ -51,8 +52,9 @@ export async function readIgnoreFile(filePath: string): Promise<string[] | null>
   let raw: string;
   try {
     raw = await fs.readFile(filePath, "utf8");
-  } catch {
-    return null;
+  } catch (error) {
+    if (isFileNotFoundError(error)) return null;
+    throw fileReadError(IGNORE_FILE_NAME, filePath, error);
   }
   return parseIgnoreContent(raw);
 }

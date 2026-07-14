@@ -24,17 +24,19 @@ function statusLabel(status: "local" | "placeholder" | "hydrated"): string {
     case "placeholder":
       return colors.dim("placeholder");
     case "hydrated":
-      return colors.cyan("hydrated");
+      return colors.cyan("cloned");
     default:
-      return colors.dim("local");
+      return colors.dim("existing");
   }
 }
 
 export async function listCommand(manifestPath: string): Promise<void> {
   const manifest = await readManifest(manifestPath);
 
-  logger.info(`Workspace: ${colors.cyan(manifest.workspace.rootName)}`);
-  logger.info(`Repos: ${manifest.repos.length}`);
+  logger.info(`workspace: ${colors.cyan(manifest.workspace.rootName)}`);
+  logger.info(
+    `${manifest.repos.length} ${manifest.repos.length === 1 ? "repository" : "repositories"}`,
+  );
 
   if (manifest.repos.length === 0) return;
 

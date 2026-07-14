@@ -14,6 +14,7 @@ import {
   mapPaths,
   machineStateFromScan,
   mergeReposIntoMap,
+  mergeWorkspaceDefinitionIntoMap,
   readWorkspaceMap,
   sharedRepoFromEntry,
   shortId,
@@ -24,6 +25,7 @@ import {
 import { reconcileFromMap } from "../core/reconcile";
 import { scanWorkspace } from "../core/scanner";
 import { cloneMap, initFolderMap, type MapTransport } from "../core/transport";
+import { writePublishedWorkspace } from "../core/workspaceStore";
 import { colors, logger } from "../ui/logger";
 import { reconcileProgressHooks } from "../ui/plan";
 import { withSpinner } from "../ui/progress";
@@ -37,6 +39,12 @@ export interface LinkOptions {
   yes?: boolean;
 }
 
+function commandArg(value: string): string {
+  if (/^[A-Za-z0-9_./:@%+=,-]+$/.test(value)) return value;
+  if (process.platform === "win32") return `'${value.replace(/'/g, "''")}'`;
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
 /**
  * Make sure the map remote exists before we try to clone it. If it doesn't and
  * it's a GitHub URL with `gh` on PATH, offer to create it as a private repo on
@@ -45,7 +53,7 @@ export interface LinkOptions {
  */
 export async function ensureMapRemoteExists(
   remote: string,
-  options: { yes?: boolean } = {},
+  options: { yes?: boolean; workspacePath?: string } = {},
 ): Promise<void> {
   const probe = await gitRemoteProbe(remote);
   if (probe.ok || !isRepoNotFoundError(probe.detail)) return;
@@ -57,21 +65,35 @@ export async function ensureMapRemoteExists(
     const create =
       options.yes ||
       (isInteractive() &&
-        (await confirm(`Map remote doesn't exist. Create ${colors.cyan(slug)} as a private GitHub repo?`, {
-          default: true,
-        })));
+        (await confirm(
+          `No workspace map found. Create ${colors.cyan(slug)} as a private GitHub repository?`,
+          {
+            default: true,
+          },
+        )));
     if (create) {
       await withSpinner(`creating ${slug} on GitHub`, () => ghCreatePrivateRepo(slug));
       return;
     }
   }
 
-  const fix = slug
-    ? canCreate
-      ? `  boot setup/link with --yes, or:  gh repo create ${slug} --private`
-      : `  gh repo create ${slug} --private   (or create it empty+private at https://github.com/new)`
-    : "  create an empty private repo on your git host, then re-run";
-  throw new Error(`Map remote not found: ${remote}\nCreate it first, then re-run:\n${fix}`);
+  const retry = `boot link ${commandArg(remote)} ${commandArg(options.workspacePath ?? ".")} --yes`;
+  if (slug && canCreate) {
+    throw new Error(
+      `No workspace map found at ${remote}.\nCreate it and link this workspace: ${retry}`,
+    );
+  }
+  if (slug) {
+    throw new Error(
+      `No workspace map found at ${remote}.\n` +
+        `Create an empty private repository at https://github.com/new, then run: ` +
+        `boot link ${commandArg(remote)} ${commandArg(options.workspacePath ?? ".")}`,
+    );
+  }
+  throw new Error(
+    `No workspace map found at ${remote}.\nCreate an empty private repository there, then run: ` +
+      `boot link ${commandArg(remote)} ${commandArg(options.workspacePath ?? ".")}`,
+  );
 }
 
 /**
@@ -93,7 +115,7 @@ export async function linkCommand(
   const paths = mapPaths(root);
   if (isLinked(root)) {
     throw new Error(
-      `${root} is already linked (${paths.mapDir}). Use \`boot pull\` / \`boot push\` to sync.`,
+      `This workspace is already linked. Pull changes with: boot pull ${commandArg(root)}`,
     );
   }
 
@@ -105,15 +127,17 @@ export async function linkCommand(
   );
 
   if (!options.folder) {
-    await ensureMapRemoteExists(remote, { yes: options.yes });
+    await ensureMapRemoteExists(remote, { yes: options.yes, workspacePath: root });
   }
 
   const identity = await loadMachineIdentity();
   await fs.mkdir(paths.bootDir, { recursive: true });
 
   const transport: MapTransport = options.folder
-    ? await withSpinner("syncing map from folder", () => initFolderMap(remote, paths.mapDir))
-    : await withSpinner("cloning map", () => cloneMap(remote, paths.mapDir));
+    ? await withSpinner("syncing workspace map from folder", () =>
+        initFolderMap(remote, paths.mapDir),
+      )
+    : await withSpinner("cloning workspace map", () => cloneMap(remote, paths.mapDir));
 
   let map = (await readWorkspaceMap(paths.mapDir)) ?? emptyWorkspaceMap(path.basename(root));
   await writeLinkConfig(root, { kind, remote, linkedAt: new Date().toISOString() });
@@ -124,6 +148,10 @@ export async function linkCommand(
     ignoreFiles: scan.ignoreFiles,
     defaultIgnoreRules: scan.defaultIgnoreRules,
   });
+  if (scan.config.definition) {
+    map = mergeWorkspaceDefinitionIntoMap(map, scan.config.definition);
+    await writePublishedWorkspace(paths.mapDir, scan.config.definition);
+  }
   await writeWorkspaceMap(paths.mapDir, map);
 
   // Recreate structure for repos that only exist elsewhere.
@@ -131,8 +159,18 @@ export async function linkCommand(
     eager: options.eager,
     hooks: reconcileProgressHooks(),
   });
-  if (recon.placeholders > 0) logger.success(`created ${recon.placeholders} placeholder(s)`);
-  if (recon.cloned > 0) logger.success(`cloned ${recon.cloned} repo(s)`);
+  if (recon.placeholders > 0) {
+    logger.success(
+      `Prepared ${recon.placeholders} repository ${
+        recon.placeholders === 1 ? "placeholder" : "placeholders"
+      }. Each placeholder clones its repository on first use.`,
+    );
+  }
+  if (recon.cloned > 0) {
+    logger.success(
+      `Cloned ${recon.cloned} ${recon.cloned === 1 ? "repository" : "repositories"}.`,
+    );
+  }
 
   // Register this machine (rescan so freshly-written placeholders are included).
   const rescan = await scanWorkspace(root);
@@ -142,9 +180,16 @@ export async function linkCommand(
 
   logger.info();
   logger.success(
-    `Linked as ${colors.cyan(identity.hostname)}. ${map.repos.length} repo(s) in the map.`,
+    `Linked as ${colors.cyan(identity.hostname)}. The workspace map has ${map.repos.length} ${
+      map.repos.length === 1 ? "repository" : "repositories"
+    }.`,
   );
   if (recon.placeholders > 0) {
-    logger.info(colors.dim("Hydrate a repo with:  boot hydrate <relativePath>"));
+    const placeholder = rescan.repos.find(
+      (repository) => repository.hydrate.status === "placeholder" && repository.remoteUrl,
+    );
+    if (placeholder) {
+      logger.next(`Clone one now: boot hydrate ${commandArg(placeholder.absolutePath)}`);
+    }
   }
 }

@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { checkoutBranch, cloneRepo, isGitRepo } from "./git";
 import {
@@ -8,6 +9,8 @@ import {
   writePlaceholderReadme,
 } from "./placeholder";
 import type { SharedRepo } from "./map";
+import { resolveWithinRoot } from "./pathUtils";
+import { quoteUserValue } from "./userErrors";
 
 export type ReconcileAction = "clone" | "placeholder";
 
@@ -41,6 +44,8 @@ export interface ReconcileResult {
   skipped: number;
   /** What would be / was created, in apply order. */
   plan: ReconcileItem[];
+  /** Clone failures that fell back to retryable placeholders. */
+  failures: Array<{ relativePath: string; message: string }>;
 }
 
 /** Repos in the map that aren't present locally yet, with their intended action. */
@@ -54,10 +59,15 @@ function planReconcile(root: string, repos: SharedRepo[], eager: boolean): {
   let skipped = 0;
 
   for (const repo of sorted) {
-    const repoPath = path.join(root, repo.relativePath);
+    const repoPath = resolveWithinRoot(root, repo.relativePath);
     if (isGitRepo(repoPath) || isPlaceholder(repoPath)) {
       skipped += 1;
       continue;
+    }
+    if (existsSync(repoPath)) {
+      throw new Error(
+        `Cannot create repository at ${quoteUserValue(repo.relativePath)} because the path already exists and is not a Git repository or repository download folder. Move or remove the existing item, then retry.`,
+      );
     }
     plan.push({ repo, action: eager && repo.remoteUrl ? "clone" : "placeholder" });
   }
@@ -84,6 +94,7 @@ export async function reconcileFromMap(
     cloned: 0,
     skipped,
     plan: plan.map(({ repo, action }) => ({ relativePath: repo.relativePath, action })),
+    failures: [],
   };
 
   if (options.dryRun) {
@@ -95,7 +106,7 @@ export async function reconcileFromMap(
   const total = plan.length;
   for (let i = 0; i < total; i += 1) {
     const { repo, action } = plan[i]!;
-    const repoPath = path.join(root, repo.relativePath);
+    const repoPath = resolveWithinRoot(root, repo.relativePath);
     const index = i + 1;
     options.hooks?.onItem?.({ index, total, relativePath: repo.relativePath, action });
     const started = Date.now();
@@ -117,8 +128,12 @@ export async function reconcileFromMap(
           action: "clone",
         });
         continue;
-      } catch {
+      } catch (error) {
         // Clone failed — fall through and leave a placeholder for a later retry.
+        result.failures.push({
+          relativePath: repo.relativePath,
+          message: (error as Error).message,
+        });
         taken = "placeholder";
       }
     }

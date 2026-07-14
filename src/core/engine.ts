@@ -1,12 +1,14 @@
 import { loadConfig } from "./config";
 import { runFreshness, type FreshnessReport } from "./freshness";
 import { loadMachineIdentity } from "./identity";
+import { withWorkspaceMapLock } from "./lock";
 import {
   emptyWorkspaceMap,
   isLinked,
   mapPaths,
   machineStateFromScan,
   mergeReposIntoMap,
+  mergeWorkspaceDefinitionIntoMap,
   readWorkspaceMap,
   sharedRepoFromEntry,
   writeMachineState,
@@ -15,6 +17,8 @@ import {
 import { reconcileFromMap, type ReconcileResult } from "./reconcile";
 import { scanWorkspace } from "./scanner";
 import { loadTransport } from "./transport";
+import { quoteUserValue } from "./userErrors";
+import { writePublishedWorkspace } from "./workspaceStore";
 
 export interface SyncOptions {
   /** Recreate missing repos by cloning instead of writing placeholders. */
@@ -35,14 +39,18 @@ export interface TickResult {
 /**
  * One end-to-end sync: pull the shared map, recreate anything missing, refresh
  * hydrated repos against their remotes, then publish this machine's view back.
- * This is the unit the daemon repeats — and the thing that keeps every machine
- * structurally identical and never building on a stale base.
+ * This is the unit the daemon repeats.
  */
 export async function syncOnce(root: string, options: SyncOptions = {}): Promise<TickResult> {
   if (!isLinked(root)) {
-    throw new Error(`${root} is not linked. Run \`boot link <remote> ${root}\` first.`);
+    throw new Error(
+      `Workspace ${quoteUserValue(root, 500)} is not linked. Run \`boot link --help\`, then link the workspace before retrying.`,
+    );
   }
+  return withWorkspaceMapLock(root, () => syncOnceLocked(root, options));
+}
 
+async function syncOnceLocked(root: string, options: SyncOptions): Promise<TickResult> {
   const config = await loadConfig(root);
   const doFetch = options.fetch ?? config.daemonFetch;
   const doFastForward = options.fastForward ?? config.daemonFastForward;
@@ -78,6 +86,10 @@ export async function syncOnce(root: string, options: SyncOptions = {}): Promise
     ignoreFiles: scan.ignoreFiles,
     defaultIgnoreRules: scan.defaultIgnoreRules,
   });
+  if (config.definition) {
+    next = mergeWorkspaceDefinitionIntoMap(next, config.definition);
+    await writePublishedWorkspace(paths.mapDir, config.definition);
+  }
   await writeWorkspaceMap(paths.mapDir, next);
   await writeMachineState(paths.mapDir, machineStateFromScan(identity, root, scan.repos));
 

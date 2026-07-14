@@ -17,22 +17,26 @@ export async function watchCommand(
   const root = path.resolve(workspacePath);
   const label = path.relative(process.cwd(), root) || ".";
 
-  logger.heading(`Watching ${colors.cyan(label)} for on-access hydration`);
+  logger.heading(`Watch ${colors.cyan(label)} for repository access`);
 
   const watcher = await startWatcher(
     root,
     {
       onReady: (placeholders, mode) => {
         if (placeholders.length === 0) {
-          logger.info(colors.dim("no placeholders to watch yet — nothing lazy here."));
+          logger.info(colors.dim("No repository placeholders found."));
         } else {
           logger.success(
-            `armed ${placeholders.length} placeholder${placeholders.length === 1 ? "" : "s"} (${mode})`,
+            `Watching ${placeholders.length} repository ${
+              placeholders.length === 1 ? "placeholder" : "placeholders"
+            } (${mode}).`,
           );
         }
       },
-      onActivity: (dir) => logger.info(`${colors.dim("\u2022")} activity in ${path.relative(root, dir)}`),
-      onHydrated: (dir) => logger.success(`hydrated ${colors.cyan(path.relative(root, dir))}`),
+      onActivity: (dir) =>
+        logger.info(`${colors.dim("\u2022")} Accessed ${path.relative(root, dir)}.`),
+      onHydrated: (dir) =>
+        logger.success(`Cloned ${colors.cyan(path.relative(root, dir))}.`),
       onError: (err) => logger.error(err.message),
     },
     { debounceMs: options.debounce },

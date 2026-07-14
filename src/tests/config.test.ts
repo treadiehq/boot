@@ -32,15 +32,27 @@ describe("parseConfig", () => {
   });
 
   it("rejects an unknown hydrate strategy", () => {
-    expect(() => parseConfig("hydrate:\n  strategy: turbo\n")).toThrow(/failed validation/);
+    expect(() => parseConfig("hydrate:\n  strategy: turbo\n")).toThrow(
+      new Error(
+        "boot.yaml has an invalid format (root: Invalid input). Fix the file, then retry.",
+      ),
+    );
   });
 
   it("rejects unknown top-level keys", () => {
-    expect(() => parseConfig("nope: true\n")).toThrow(/failed validation/);
+    expect(() => parseConfig("nope: true\n")).toThrow(
+      new Error(
+        "boot.yaml has an invalid format (root: Invalid input). Fix the file, then retry.",
+      ),
+    );
   });
 
   it("rejects invalid YAML", () => {
-    expect(() => parseConfig("foo: : :\n  - bad")).toThrow(/Could not parse|failed validation/);
+    expect(() => parseConfig("foo: : :\n  - bad")).toThrow(
+      new Error(
+        "boot.yaml is not valid YAML: Nested mappings are not allowed in compact mappings at line 1, column 6: foo: : : ^ Fix the file, then retry.",
+      ),
+    );
   });
 });
 

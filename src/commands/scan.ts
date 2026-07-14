@@ -8,6 +8,12 @@ export interface ScanOptions {
   output: string;
 }
 
+function commandArg(value: string): string {
+  if (/^[A-Za-z0-9_./:@%+=,-]+$/.test(value)) return value;
+  if (process.platform === "win32") return `'${value.replace(/'/g, "''")}'`;
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
 export async function scanCommand(workspacePath: string, options: ScanOptions): Promise<void> {
   await ensureGitAvailable();
 
@@ -23,8 +29,12 @@ export async function scanCommand(workspacePath: string, options: ScanOptions): 
   });
   const outPath = await writeManifest(options.output, manifest);
 
-  logger.heading(`boot — scanned ${colors.cyan(result.rootName)}`);
-  logger.info(`Found ${colors.bold(String(result.repos.length))} repo(s)`);
+  logger.heading(`Snapshot workspace — ${colors.cyan(result.rootName)}`);
+  logger.info(
+    `Found ${colors.bold(String(result.repos.length))} ${
+      result.repos.length === 1 ? "repository" : "repositories"
+    }.`,
+  );
 
   for (const repo of result.repos) {
     const state = repo.dirty ? colors.yellow("dirty") : colors.green("clean");
@@ -37,17 +47,29 @@ export async function scanCommand(workspacePath: string, options: ScanOptions): 
 
   if (result.config.sourcePath) {
     logger.info();
-    logger.info(`Config: ${colors.cyan(result.config.sourcePath)} (hydrate: ${result.config.hydrateStrategy})`);
+    logger.info(
+      `Config: ${colors.cyan(result.config.sourcePath)} (placeholder setup: ${
+        result.config.hydrateStrategy
+      })`,
+    );
   }
   if (result.ignoreFiles.length > 0) {
     const total = result.ignoreFiles.reduce((n, f) => n + f.rules.length, 0);
-    logger.info(`Ignore files: ${result.ignoreFiles.length} (${total} rule(s) applied)`);
+    logger.info(
+      `Ignore files: ${result.ignoreFiles.length} (${total} ${
+        total === 1 ? "rule" : "rules"
+      } applied)`,
+    );
   }
 
   logger.info();
   logger.success(
-    `Manifest written to ${colors.cyan(path.relative(process.cwd(), outPath) || outPath)}`,
+    `Wrote snapshot to ${colors.cyan(path.relative(process.cwd(), outPath) || outPath)}.`,
   );
-  logger.next(`Recreate it elsewhere:  boot import ${path.basename(outPath)} <target> --lazy`);
-  logger.next("Or sync continuously instead:  boot setup <map-remote>");
+  const target = path.resolve(`${result.rootName}-restored`);
+  logger.next(
+    `Restore it with placeholders: boot import ${commandArg(outPath)} ${commandArg(
+      target,
+    )} --lazy`,
+  );
 }

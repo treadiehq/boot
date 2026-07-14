@@ -1,6 +1,7 @@
 import type { AheadBehind } from "./git";
 import { IGNORE_FILE_NAME } from "./ignore";
 import type { PackageManager, ProjectType } from "./projectDetect";
+import { quoteUserValue, sanitizeUserText } from "./userErrors";
 
 /** Generated folders doctor flags as "should not be synced later" when present. */
 export const SUSPICIOUS_GENERATED_DIRS = [
@@ -64,20 +65,24 @@ export function runDoctorChecks(input: DoctorInput): DoctorReport {
   let divergedCount = 0;
 
   if (!input.hasWorkspaceIgnoreFile) {
-    warnings.push(`workspace has no ${IGNORE_FILE_NAME}`);
+    warnings.push(`workspace has no ${IGNORE_FILE_NAME}; only built-in exclusions apply`);
   }
 
   for (const repo of input.repos) {
+    const name = quoteUserValue(repo.name);
+    const relativePath = sanitizeUserText(repo.relativePath, 500);
     if (repo.placeholderMetadataInvalid) {
       warnings.push(
-        `${repo.relativePath}/.boot/repo.json is invalid; placeholder branch checks were skipped`,
+        `${relativePath}/.boot/repo.json is invalid; repository branch checks were skipped. Run \`boot pull\` from the workspace root to recreate it`,
       );
     }
 
     if (repo.status === "placeholder") {
       placeholdersChecked += 1;
       if (!repo.remoteUrl) {
-        warnings.push(`${repo.relativePath} is a placeholder with no remote URL`);
+        warnings.push(
+          `${relativePath} is a placeholder with no remote URL; add its URL to boot.yaml before downloading it`,
+        );
       }
       continue;
     }
@@ -85,22 +90,24 @@ export function runDoctorChecks(input: DoctorInput): DoctorReport {
     reposChecked += 1;
 
     if (repo.dirty) {
-      warnings.push(`${repo.name} is dirty`);
+      warnings.push(`${name} is dirty (has uncommitted changes)`);
     }
     if (!repo.remoteUrl) {
-      warnings.push(`${repo.name} has no remote`);
+      warnings.push(`${name} has no repository URL`);
     }
     if (repo.currentBranch === null) {
-      warnings.push(`${repo.name} is in detached HEAD; daemon cannot auto-update it`);
+      warnings.push(`${name} is not on a branch; automatic updates are skipped`);
     }
     if (!repo.placeholderMetadataInvalid) {
       if (repo.intendedBranch && repo.currentBranch !== repo.intendedBranch) {
-        const current = repo.currentBranch ?? "(detached)";
+        const current = repo.currentBranch ? quoteUserValue(repo.currentBranch) : "no branch";
         warnings.push(
-          `${repo.name} is on branch ${current} but was intended to be on ${repo.intendedBranch}`,
+          `${name} is on ${current}, but repository download information specifies ${quoteUserValue(repo.intendedBranch)}`,
         );
       } else if (!repo.intendedBranch && repo.currentBranch && !branches.has(repo.currentBranch)) {
-        warnings.push(`${repo.name} is on branch ${repo.currentBranch} instead of ${branchLabel}`);
+        warnings.push(
+          `${name} is on branch ${quoteUserValue(repo.currentBranch)} instead of ${quoteUserValue(branchLabel)}`,
+        );
       }
     }
     // Ahead *and* behind: the daemon can't fast-forward this repo, so it will
@@ -108,17 +115,19 @@ export function runDoctorChecks(input: DoctorInput): DoctorReport {
     if (repo.aheadBehind && repo.aheadBehind.ahead > 0 && repo.aheadBehind.behind > 0) {
       divergedCount += 1;
       warnings.push(
-        `${repo.name} has diverged from its upstream (${repo.aheadBehind.ahead} ahead, ${repo.aheadBehind.behind} behind) — merge or rebase to reconcile`,
+        `${name} has diverged from its tracked remote branch (${repo.aheadBehind.ahead} ahead, ${repo.aheadBehind.behind} behind); merge or rebase before automatic updates can continue`,
       );
     }
     if (repo.currentBranch !== null && repo.remoteUrl !== null && repo.aheadBehind === null) {
-      warnings.push(`${repo.name} has no upstream tracking branch; daemon cannot auto-update it`);
+      warnings.push(
+        `${name} has no confirmed upstream tracking branch; automatic updates are skipped`,
+      );
     }
     if (repo.lastCommitDate) {
       const ageDays = Math.floor((now.getTime() - repo.lastCommitDate.getTime()) / DAY_MS);
       if (ageDays > input.staleAfterDays) {
         warnings.push(
-          `${repo.name} last commit is ${ageDays} days old (stale after ${input.staleAfterDays})`,
+          `${name} last commit was ${ageDays} days ago (warning threshold: ${input.staleAfterDays} days)`,
         );
       }
     }
@@ -127,10 +136,10 @@ export function runDoctorChecks(input: DoctorInput): DoctorReport {
       repo.detectedFiles.includes("package.json") &&
       !repo.packageManager
     ) {
-      warnings.push(`${repo.name} has a package.json but no lockfile`);
+      warnings.push(`${name} has a package.json but no lockfile`);
     }
     for (const dir of repo.presentGeneratedDirs) {
-      warnings.push(`${repo.name} has ${dir} present; this should not be synced later`);
+      warnings.push(`${name} contains ${quoteUserValue(dir)} at the repository root`);
     }
   }
 

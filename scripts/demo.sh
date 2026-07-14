@@ -1,17 +1,15 @@
 #!/usr/bin/env bash
 #
-# A narrated, self-contained live demo of boot's core promise:
+# A self-contained demo of preparing a workspace for a coding agent.
 #
-#   "A fresh machine gets your exact workspace in seconds — repos arrive as tiny
-#    placeholders and hydrate into real clones the moment you open them."
-#
-# It fakes TWO machines on this one box using a local folder as the shared map
-# (no GitHub, no network) and local bare git repos as remotes. Everything lives
-# under a temp dir that is removed on exit, so your real filesystem is untouched.
+# It creates a local authoring environment and a fresh coding-agent environment
+# on one machine, using a local folder for shared workspace data
+# (no GitHub, no network) and local bare git repos as remotes. Demo data lives
+# under a temp directory; rebuilding the CLI also updates this project's dist/.
 #
 # Run with:  pnpm demo            (press Enter to advance between beats)
-#            pnpm demo -- -y      (auto-advance, no prompts — good for recording)
-#            pnpm demo -- --keep  (keep the temp workspace to poke around after)
+#            pnpm demo -y         (auto-advance, no prompts — good for recording)
+#            pnpm demo --keep     (keep the temp workspace to poke around after)
 #
 set -euo pipefail
 
@@ -21,11 +19,12 @@ BUILD=1      # rebuild the CLI first
 KEEP=0       # keep the temp dir on exit
 for arg in "$@"; do
   case "$arg" in
+    --)                    ;;
     -y|--yes|--no-pause) PAUSE=0 ;;
     --no-build)          BUILD=0 ;;
     --keep)              KEEP=1 ;;
     -h|--help)
-      sed -n '3,15p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '3,13p' "$0" | sed 's/^# \{0,1\}//'
       exit 0 ;;
     *) echo "unknown option: $arg (try --help)" >&2; exit 2 ;;
   esac
@@ -67,7 +66,7 @@ if [ "$BUILD" = 1 ]; then
   pnpm build >/dev/null 2>&1 || { echo "FATAL: build failed" >&2; exit 1; }
 fi
 DIST="$PROJECT_ROOT/dist/index.js"
-[ -f "$DIST" ] || { echo "FATAL: $DIST not found — run without --no-build." >&2; exit 1; }
+[ -f "$DIST" ] || { echo "FATAL: $DIST not found. Run pnpm build, then retry." >&2; exit 1; }
 boot() { node "$DIST" "$@"; }
 
 # --- Scratch space (removed on exit unless --keep) -------------------------
@@ -99,53 +98,103 @@ mkrepo() { # <reldir> <relremote>
 
 # ───────────────────────────────────────────────────────────────────────────
 clear 2>/dev/null || true
-printf '%s\n' "$(c bold 'boot — Dropbox for ~/code')"
-say "It syncs the *map* of your workspace, not the files. A fresh machine gets"
-say "your whole layout in seconds; repos hydrate into real clones on first open."
+printf '%s\n' "$(c bold 'boot — Give your agents a workspace')"
+say "A coding agent starts without the project setup. This task needs three related repositories,"
+say "their paths, documented commands, environment requirements, and constraints."
 say ""
-say "This demo fakes two machines on one box — a local folder is the shared map,"
+say "This demo fakes two environments on one box — a local folder is the shared map,"
 say "local git repos stand in for your GitHub remotes. Nothing leaves this laptop."
 pause
 
-# --- Beat 1: Laptop A has a real workspace ---------------------------------
-step "Laptop A — a normal ~/code with three git repos"
+# --- Beat 1: describe the workspace ----------------------------------------
+step "A developer describes a three-repository workspace"
 say "Setting up apps/web, apps/api and libs/ui (each with a remote)…"
 mkrepo laptop-A/code/apps/web remotes/web.git >/dev/null 2>&1
 mkrepo laptop-A/code/apps/api remotes/api.git >/dev/null 2>&1
 mkrepo laptop-A/code/libs/ui  remotes/ui.git  >/dev/null 2>&1
 export BOOT_HOME="$WORK/home-A"   # isolates "machine A" config under the temp dir
-run boot status laptop-A/code
+export DEMO_BILLING_TOKEN="demo-secret-never-printed"
+run boot init laptop-A/code
+cat > laptop-A/code/boot.yaml <<EOF
+schemaVersion: 1
+workspace:
+  id: demo/billing
+  name: Billing
+repositories:
+  web:
+    url: "$PWD/remotes/web.git"
+    path: apps/web
+    role: customer billing UI
+    ref: main
+  api:
+    url: "$PWD/remotes/api.git"
+    path: apps/api
+    role: invoices and subscriptions API
+    ref: main
+  ui:
+    url: "$PWD/remotes/ui.git"
+    path: libs/ui
+    role: shared interface components
+    ref: main
+commands:
+  test:
+    run: git status --short
+    repository: api
+env:
+  required:
+    - name: DEMO_BILLING_TOKEN
+      secret: true
+      source: process
+constraints:
+  - Never use production billing data
+profiles:
+  local:
+    repositories: all
+    hydrate: manual
+  agent:
+    repositories:
+      - web
+      - api
+      - ui
+    commands:
+      - test
+    env:
+      - DEMO_BILLING_TOKEN
+    hydrate: eager
+defaults:
+  profile: local
+EOF
+say "Added repository roles, an agent profile, a test command, and a constraint."
 pause
 
-# --- Beat 2: publish the map -----------------------------------------------
-step "Laptop A — publish the workspace map"
-say "link records the shape into the shared folder; push keeps it current."
+# --- Beat 2: publish the workspace -----------------------------------------
+step "Publish one workspace definition"
+say "The shared folder carries boot.yaml and repository information."
 run boot link dropbox/boot-map laptop-A/code --folder
-run boot push laptop-A/code
+run boot save laptop-A/code
 pause
 
-# --- Beat 3: a brand-new machine ------------------------------------------
-step "Laptop B — a brand-new machine links the same map"
+# --- Beat 3: a fresh agent environment ------------------------------------
+step "A fresh coding-agent workspace starts with no project files"
 export BOOT_HOME="$WORK/home-B"   # a *different* machine, fresh config
 run boot link dropbox/boot-map laptop-B/code --folder
 say ""
-say "The entire workspace exists already — but it's just placeholders:"
+say "The repository information is present, but the agent profile has not been applied:"
 run du -sh laptop-B/code
 run boot status laptop-B/code
 pause
 
-# --- Beat 4: the magic — hydrate on open -----------------------------------
-step "Laptop B — open one repo and it hydrates itself"
-say "'boot enter' is what the shell hook runs when you cd into a folder."
-run boot enter laptop-B/code/apps/api
+# --- Beat 4: prepare and inspect -------------------------------------------
+step "Prepare the agent workspace"
+run boot up laptop-B/code --profile agent
 say ""
-say "apps/api is now a real clone — the others are still weightless placeholders:"
-run boot status laptop-B/code
+say "The agent receives structured roles, paths, commands, and constraints:"
+run boot inspect laptop-B/code --json
 pause
 
 # --- Outro -----------------------------------------------------------------
 step "That's it"
-say "On two real machines this is a single command per box:"
-printf '   %s\n' "$(c cyan 'boot setup git@github.com:you/your-code-map.git ~/code')"
-say "…then just cd into a repo and the shell hook hydrates it on access."
+say "The same definition can prepare local developer and coding-agent workspaces."
+printf '   %s\n' "$(c cyan 'boot up /workspace --profile agent')"
+printf '   %s\n' "$(c cyan 'boot inspect /workspace --json')"
 printf '\n%s\n' "$(c green '✓ demo complete')"

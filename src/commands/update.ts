@@ -19,6 +19,16 @@ export interface UpdateOptions {
 const INSTALL_URL = "https://raw.githubusercontent.com/treadiehq/boot/main/scripts/install.sh";
 const INSTALL_URL_PS1 = "https://raw.githubusercontent.com/treadiehq/boot/main/scripts/install.ps1";
 
+function commandArg(value: string): string {
+  if (/^[A-Za-z0-9_./:@%+=,-]+$/.test(value)) return value;
+  if (process.platform === "win32") return `'${value.replace(/'/g, "''")}'`;
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+function retryCommand(options: UpdateOptions): string {
+  return options.ref ? `boot update ${commandArg(options.ref)}` : "boot update";
+}
+
 /**
  * Walk up from a starting file to the git checkout that boot is installed in
  * (the dir that has both a `.git` and a `package.json`). Works whether we're
@@ -86,8 +96,8 @@ async function updateBinary(options: UpdateOptions): Promise<void> {
   }
 
   if (!(await hasCommand("bash")) || !(await hasCommand("curl"))) {
-    logger.error("self-update needs `curl` and `bash` on PATH.");
-    logger.next(`Re-run the installer manually:  curl -fsSL ${INSTALL_URL} | bash`);
+    logger.error("Cannot update because `curl` or `bash` is missing from PATH.");
+    logger.next(`Install the missing tool, then run: ${retryCommand(options)}`);
     return;
   }
 
@@ -129,8 +139,8 @@ async function updateFromSource(root: string, options: UpdateOptions): Promise<v
   // Refuse to clobber a checkout with local edits (e.g. a dev clone).
   const dirty = await gitOut(root, ["status", "--porcelain"]).catch(() => "");
   if (dirty) {
-    logger.error("the install directory has local changes — refusing to update.");
-    logger.info(colors.dim("   commit/stash them, or reinstall, then try again."));
+    logger.error("Cannot update because the install directory has local changes.");
+    logger.next(`Commit or stash them, then run: ${retryCommand(options)}`);
     return;
   }
 

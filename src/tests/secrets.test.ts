@@ -37,7 +37,11 @@ describe("encrypt / decrypt", () => {
 
   it("fails to decrypt with the wrong key", () => {
     const blob = encrypt("secret", generateKey());
-    expect(() => decrypt(blob, generateKey())).toThrow(/wrong key or tampered/);
+    expect(() => decrypt(blob, generateKey())).toThrow(
+      new Error(
+        `Could not decrypt the saved environment values. The key does not match, or the saved data is damaged. Import the matching key at "${secretKeyPath()}", then retry.`,
+      ),
+    );
   });
 
   it("detects tampering via the GCM auth tag", () => {
@@ -46,7 +50,11 @@ describe("encrypt / decrypt", () => {
     const data = Buffer.from(blob.data, "base64");
     data[0] ^= 0xff; // flip a bit
     const tampered = { ...blob, data: data.toString("base64") };
-    expect(() => decrypt(tampered, key)).toThrow(/tampered/);
+    expect(() => decrypt(tampered, key)).toThrow(
+      new Error(
+        `Could not decrypt the saved environment values. The key does not match, or the saved data is damaged. Import the matching key at "${secretKeyPath()}", then retry.`,
+      ),
+    );
   });
 });
 
@@ -70,7 +78,11 @@ describe("key management", () => {
   });
 
   it("throws a friendly error when the key is missing", async () => {
-    await expect(loadKey()).rejects.toThrow(/No boot secret key/);
+    await expect(loadKey()).rejects.toThrow(
+      new Error(
+        `No Boot secret key was found at "${secretKeyPath()}". Create one with \`boot env init\`, or import one with \`boot env key import\`.`,
+      ),
+    );
   });
 
   it("exports and imports a key across machines", async () => {
@@ -98,6 +110,10 @@ describe("key management", () => {
   });
 
   it("rejects a malformed key", async () => {
-    await expect(importKeyBase64("not-a-real-key")).rejects.toThrow(/Invalid boot secret key/);
+    await expect(importKeyBase64("not-a-real-key")).rejects.toThrow(
+      new Error(
+        "The Boot secret key has an invalid format (expected 32 bytes, found 10). Import a valid key, then retry.",
+      ),
+    );
   });
 });

@@ -15,13 +15,19 @@ interface FuseCtor {
   isConfigured(cb: (err: Error | null, configured: boolean) => void): void;
 }
 
-const FUSE_INSTALL_HELP = `On-access mounting needs a system FUSE plus the optional 'fuse-native' module.
+const FUSE_INSTALL_HELP = `Mounting needs system FUSE and the optional 'fuse-native' module.
 
   macOS:  brew install --cask macfuse        (then approve the system extension)
   Linux:  sudo apt install fuse3 libfuse-dev  (or your distro's equivalent)
   then:   pnpm add fuse-native
 
-Without it you still get on-access hydration via \`boot shell-hook\` and \`boot watch\`.`;
+Without it, \`boot shell-hook\` and \`boot watch\` can still clone repository placeholders on access.`;
+
+function commandArg(value: string): string {
+  if (/^[A-Za-z0-9_./:@%+=,-]+$/.test(value)) return value;
+  if (process.platform === "win32") return `'${value.replace(/'/g, "''")}'`;
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
 
 /** Lazily load the native binding so the package installs without it. */
 function loadFuse(): FuseCtor {
@@ -55,7 +61,7 @@ export async function mountCommand(
 
   const stat = await fs.stat(root).catch(() => null);
   if (!stat?.isDirectory()) {
-    throw new Error(`Workspace path is not a directory: ${root}`);
+    throw new Error(`Path is not a workspace directory: ${root}`);
   }
   await fs.mkdir(mnt, { recursive: true });
 
@@ -64,7 +70,7 @@ export async function mountCommand(
   const overlay = new OverlayFs(
     root,
     {
-      onHydrate: (dir) => logger.success(`hydrated ${colors.cyan(path.relative(root, dir))}`),
+      onHydrate: (dir) => logger.success(`Cloned ${colors.cyan(path.relative(root, dir))}.`),
       onError: (err) => logger.error(err.message),
     },
     { readOnly: options.readOnly },
@@ -88,14 +94,18 @@ export async function mountCommand(
     fuse.mount((err) => (err ? reject(err) : resolve()));
   });
 
-  logger.success("mounted — placeholders hydrate on first read");
+  logger.success("Mounted. Repository placeholders clone on first read.");
   logger.info(colors.dim("Press Ctrl+C to unmount."));
 
   await new Promise<void>((resolve) => {
     const stop = (): void => {
       fuse.unmount((err) => {
-        if (err) logger.error(`unmount failed: ${err.message} (try \`boot unmount ${mnt}\`)`);
-        else logger.info("unmounted.");
+        if (err) {
+          logger.error(
+            `Could not unmount: ${err.message}. Try: boot unmount ${commandArg(mnt)}`,
+          );
+        }
+        else logger.info("Unmounted.");
         resolve();
       });
     };
@@ -111,5 +121,5 @@ export async function unmountCommand(mountpoint: string): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     Fuse.unmount(mnt, (err) => (err ? reject(err) : resolve()));
   });
-  logger.success(`unmounted ${colors.cyan(mnt)}`);
+  logger.success(`Unmounted ${colors.cyan(mnt)}.`);
 }

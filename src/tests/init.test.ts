@@ -73,6 +73,9 @@ describe("initCommand", () => {
   });
 
   it("throws for a workspace path that does not exist", async () => {
-    await expect(initCommand(path.join(root, "missing"))).rejects.toThrow(/does not exist/);
+    const missing = path.join(root, "missing");
+    await expect(initCommand(missing)).rejects.toThrow(
+      new Error(`Path not found for workspace: ${missing}`),
+    );
   });
 });

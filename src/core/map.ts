@@ -11,6 +11,10 @@ import {
   type RepoEntry,
 } from "./manifest";
 import type { MachineIdentity } from "./identity";
+import { writeFileAtomic } from "./files";
+import { portableRelativePathSchema } from "./pathUtils";
+import type { WorkspaceDefinition } from "./workspace";
+import { fileReadError, isFileNotFoundError, quoteUserValue } from "./userErrors";
 
 export const MAP_VERSION = "1" as const;
 
@@ -34,7 +38,7 @@ export const LINK_FILE = "link.json";
  */
 export const sharedRepoSchema = z.object({
   name: z.string(),
-  relativePath: z.string(),
+  relativePath: portableRelativePathSchema,
   remoteUrl: z.string().nullable(),
   branch: z.string().nullable(),
   lastCommit: z.string().nullable(),
@@ -44,12 +48,39 @@ export const sharedRepoSchema = z.object({
 
 export type SharedRepo = z.infer<typeof sharedRepoSchema>;
 
+const sharedRepoArraySchema = z.array(sharedRepoSchema).superRefine((repos, ctx) => {
+  const paths = repos
+    .map((repo, index) => ({ index, path: repo.relativePath.toLowerCase() }))
+    .sort((left, right) => left.path.localeCompare(right.path));
+  for (let index = 0; index < paths.length; index += 1) {
+    const current = paths[index]!;
+    const next = paths[index + 1];
+    if (next?.path === current.path) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [next.index, "relativePath"],
+        message: "duplicates another repository path",
+      });
+    }
+    for (let candidateIndex = index + 1; candidateIndex < paths.length; candidateIndex += 1) {
+      const candidate = paths[candidateIndex]!;
+      if (candidate.path.startsWith(`${current.path}/`)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [candidate.index, "relativePath"],
+          message: `cannot be nested inside "${current.path}"`,
+        });
+      }
+    }
+  }
+});
+
 export const workspaceMapSchema = z.object({
   version: z.literal(MAP_VERSION),
   workspace: z.object({ name: z.string() }),
   updatedAt: z.string(),
   config: manifestConfigSchema,
-  repos: z.array(sharedRepoSchema),
+  repos: sharedRepoArraySchema,
 });
 
 export type WorkspaceMap = z.infer<typeof workspaceMapSchema>;
@@ -71,7 +102,7 @@ export const machineStateSchema = z.object({
   arch: z.string(),
   root: z.string(),
   updatedAt: z.string(),
-  repos: z.record(z.string(), machineRepoStateSchema),
+  repos: z.record(portableRelativePathSchema, machineRepoStateSchema),
 });
 
 export type MachineState = z.infer<typeof machineStateSchema>;
@@ -131,8 +162,9 @@ export function shortId(id: string): string {
 
 function formatIssues(error: z.ZodError): string {
   return error.issues
-    .map((issue) => `  - ${issue.path.join(".") || "(root)"}: ${issue.message}`)
-    .join("\n");
+    .slice(0, 5)
+    .map((issue) => `${issue.path.join(".") || "root"}: ${issue.message}`)
+    .join("; ");
 }
 
 export function emptyWorkspaceMap(name: string): WorkspaceMap {
@@ -151,28 +183,33 @@ export async function readWorkspaceMap(mapDir: string): Promise<WorkspaceMap | n
   let raw: string;
   try {
     raw = await fs.readFile(file, "utf8");
-  } catch {
-    return null;
+  } catch (error) {
+    if (isFileNotFoundError(error)) return null;
+    throw fileReadError("workspace data", file, error);
   }
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    throw new Error(`Workspace map is not valid JSON: ${file}`);
+    throw new Error(
+      `Workspace data at ${quoteUserValue(file, 500)} is not valid JSON. Restore or replace the file, then retry.`,
+    );
   }
 
   const result = workspaceMapSchema.safeParse(parsed);
   if (!result.success) {
-    throw new Error(`Workspace map failed validation: ${file}\n${formatIssues(result.error)}`);
+    throw new Error(
+      `Workspace data at ${quoteUserValue(file, 500)} has an invalid format (${formatIssues(result.error)}). Restore or replace the file, then retry.`,
+    );
   }
   return result.data;
 }
 
 export async function writeWorkspaceMap(mapDir: string, map: WorkspaceMap): Promise<void> {
-  await fs.mkdir(mapDir, { recursive: true });
   const file = path.join(mapDir, WORKSPACE_MAP_FILE);
-  await fs.writeFile(file, `${JSON.stringify(map, null, 2)}\n`, "utf8");
+  const validated = workspaceMapSchema.parse(map);
+  await writeFileAtomic(file, `${JSON.stringify(validated, null, 2)}\n`);
 }
 
 export async function readMachineState(
@@ -184,46 +221,64 @@ export async function readMachineState(
   let raw: string;
   try {
     raw = await fs.readFile(file, "utf8");
-  } catch {
-    return null;
+  } catch (error) {
+    if (isFileNotFoundError(error)) return null;
+    throw fileReadError("machine state", file, error);
   }
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    throw new Error(`Machine state is not valid JSON: ${file}`);
+    throw new Error(
+      `Machine state at ${quoteUserValue(file, 500)} is not valid JSON. Delete the file, then rerun the command to recreate it.`,
+    );
   }
 
   const result = machineStateSchema.safeParse(parsed);
   if (!result.success) {
-    throw new Error(`Machine state failed validation: ${file}\n${formatIssues(result.error)}`);
+    throw new Error(
+      `Machine state at ${quoteUserValue(file, 500)} has an invalid format (${formatIssues(result.error)}). Delete the file, then rerun the command to recreate it.`,
+    );
   }
   return result.data;
 }
 
 export async function writeMachineState(mapDir: string, state: MachineState): Promise<void> {
-  const dir = path.join(mapDir, MACHINES_DIR);
-  await fs.mkdir(dir, { recursive: true });
-  const file = path.join(dir, `${state.machineId}.json`);
-  await fs.writeFile(file, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+  const file = path.join(mapDir, MACHINES_DIR, `${state.machineId}.json`);
+  const validated = machineStateSchema.parse(state);
+  await writeFileAtomic(file, `${JSON.stringify(validated, null, 2)}\n`);
 }
 
 export async function readLinkConfig(root: string): Promise<LinkConfig | null> {
   const { linkPath } = mapPaths(root);
+  let raw: string;
   try {
-    const raw = await fs.readFile(linkPath, "utf8");
-    const parsed = linkConfigSchema.safeParse(JSON.parse(raw));
-    return parsed.success ? parsed.data : null;
-  } catch {
-    return null;
+    raw = await fs.readFile(linkPath, "utf8");
+  } catch (error) {
+    if (isFileNotFoundError(error)) return null;
+    throw fileReadError("workspace link settings", linkPath, error);
   }
+  let data: unknown;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    throw new Error(
+      `Workspace link settings at ${quoteUserValue(linkPath, 500)} are not valid JSON. Run \`boot link --help\`, then recreate the link.`,
+    );
+  }
+  const parsed = linkConfigSchema.safeParse(data);
+  if (!parsed.success) {
+    throw new Error(
+      `Workspace link settings at ${quoteUserValue(linkPath, 500)} have an invalid format. Run \`boot link --help\`, then recreate the link.`,
+    );
+  }
+  return parsed.data;
 }
 
 export async function writeLinkConfig(root: string, config: LinkConfig): Promise<void> {
-  const { bootDir, linkPath } = mapPaths(root);
-  await fs.mkdir(bootDir, { recursive: true });
-  await fs.writeFile(linkPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+  const { linkPath } = mapPaths(root);
+  await writeFileAtomic(linkPath, `${JSON.stringify(config, null, 2)}\n`);
 }
 
 /* ------------------------------------------------------------------ *
@@ -286,6 +341,38 @@ export function mergeReposIntoMap(
   };
 
   return { ...map, updatedAt: new Date().toISOString(), config: mergedConfig, repos };
+}
+
+/**
+ * Project canonical Workspace intent into the legacy topology map. The map
+ * remains a compatibility/synchronization format; boot.yaml owns desired URLs
+ * and refs whenever they are declared.
+ */
+export function mergeWorkspaceDefinitionIntoMap(
+  map: WorkspaceMap,
+  definition: WorkspaceDefinition,
+): WorkspaceMap {
+  const byPath = new Map(map.repos.map((repo) => [repo.relativePath, repo] as const));
+  for (const [id, repository] of Object.entries(definition.repositories)) {
+    const existing = byPath.get(repository.path);
+    byPath.set(repository.path, {
+      name: id,
+      relativePath: repository.path,
+      remoteUrl: repository.url ?? existing?.remoteUrl ?? null,
+      branch: repository.ref ?? existing?.branch ?? null,
+      lastCommit: existing?.lastCommit ?? null,
+      packageManager: existing?.packageManager ?? null,
+      projectType: existing?.projectType ?? "unknown",
+    });
+  }
+  return {
+    ...map,
+    workspace: { name: definition.workspace.name },
+    updatedAt: new Date().toISOString(),
+    repos: [...byPath.values()].sort((left, right) =>
+      left.relativePath.localeCompare(right.relativePath),
+    ),
+  };
 }
 
 /** Build this machine's state snapshot from a scan of its workspace. */

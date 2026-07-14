@@ -1,4 +1,6 @@
 import path from "node:path";
+import { z } from "zod";
+import { quoteUserValue } from "./userErrors";
 
 /**
  * Generated / build-output directories that boot should never descend into
@@ -34,4 +36,54 @@ export function toPosix(p: string): string {
  */
 export function toPosixRelative(root: string, target: string): string {
   return toPosix(path.relative(root, target));
+}
+
+/**
+ * A portable path stored in Boot state. Persisted paths are always relative to
+ * the workspace root and use POSIX separators on every platform.
+ */
+export const portableRelativePathSchema = z.string().superRefine((value, ctx) => {
+  if (value.length === 0) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "must not be empty" });
+    return;
+  }
+  if (value.includes("\0")) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "must not contain NUL bytes" });
+  }
+  if (value.includes("\\")) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "must use forward slashes" });
+  }
+  if (value === "." || path.posix.isAbsolute(value) || /^[A-Za-z]:/.test(value)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "must be a non-root path relative to the workspace",
+    });
+  }
+  if (path.posix.normalize(value) !== value || value.split("/").some((part) => part === "..")) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "must be normalized and must not contain '..'",
+    });
+  }
+});
+
+export type PortableRelativePath = z.infer<typeof portableRelativePathSchema>;
+
+/** Resolve a persisted relative path and prove that it remains under `root`. */
+export function resolveWithinRoot(root: string, relativePath: string): string {
+  const parsed = portableRelativePathSchema.safeParse(relativePath);
+  if (!parsed.success) {
+    throw new Error(
+      `Workspace path ${quoteUserValue(relativePath)} is invalid: ${parsed.error.issues[0]?.message}. Use a relative path inside the workspace.`,
+    );
+  }
+
+  const absoluteRoot = path.resolve(root);
+  const target = path.resolve(absoluteRoot, ...relativePath.split("/"));
+  if (!target.startsWith(`${absoluteRoot}${path.sep}`)) {
+    throw new Error(
+      `Workspace path ${quoteUserValue(relativePath)} points outside the workspace. Use a relative path inside the workspace.`,
+    );
+  }
+  return target;
 }

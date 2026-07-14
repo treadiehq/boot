@@ -48,18 +48,20 @@ describe("runDoctorChecks", () => {
         repo({ name: "local-experiment", remoteUrl: null }),
       ],
     });
-    expect(report.warnings).toContain("infraone is dirty");
-    expect(report.warnings).toContain("kplane is on branch agent-test instead of main/master");
-    expect(report.warnings).toContain("local-experiment has no remote");
+    expect(report.warnings).toContain('"infraone" is dirty (has uncommitted changes)');
+    expect(report.warnings).toContain(
+      '"kplane" is on branch "agent-test" instead of "main/master"',
+    );
+    expect(report.warnings).toContain('"local-experiment" has no repository URL');
   });
 
-  it("flags detached HEAD because the daemon cannot auto-update it", () => {
+  it("flags a detached HEAD because automatic updates are skipped", () => {
     const report = runDoctorChecks({
       ...base,
       repos: [repo({ name: "release-checkout", currentBranch: null })],
     });
     expect(report.warnings).toContain(
-      "release-checkout is in detached HEAD; daemon cannot auto-update it",
+      '"release-checkout" is not on a branch; automatic updates are skipped',
     );
   });
 
@@ -69,7 +71,7 @@ describe("runDoctorChecks", () => {
       repos: [repo({ name: "no-upstream", currentBranch: "main", aheadBehind: null })],
     });
     expect(report.warnings).toContain(
-      "no-upstream has no upstream tracking branch; daemon cannot auto-update it",
+      '"no-upstream" has no confirmed upstream tracking branch; automatic updates are skipped',
     );
   });
 
@@ -81,10 +83,20 @@ describe("runDoctorChecks", () => {
         repo({ name: "detached", currentBranch: null, aheadBehind: null }),
       ],
     });
-    expect(report.warnings).toContain("no-remote has no remote");
-    expect(report.warnings).toContain("detached is in detached HEAD; daemon cannot auto-update it");
-    expect(report.warnings.some((w) => w.includes("no-remote has no upstream"))).toBe(false);
-    expect(report.warnings.some((w) => w.includes("detached has no upstream"))).toBe(false);
+    expect(report.warnings).toContain('"no-remote" has no repository URL');
+    expect(report.warnings).toContain(
+      '"detached" is not on a branch; automatic updates are skipped',
+    );
+    expect(
+      report.warnings.some((warning) =>
+        warning.includes('"no-remote" has no confirmed upstream tracking branch'),
+      ),
+    ).toBe(false);
+    expect(
+      report.warnings.some((warning) =>
+        warning.includes('"detached" has no confirmed upstream tracking branch'),
+      ),
+    ).toBe(false);
   });
 
   it("flags hydrated repos that are not on their intended branch", () => {
@@ -100,7 +112,7 @@ describe("runDoctorChecks", () => {
       ],
     });
     expect(report.warnings).toContain(
-      "feature-app is on branch main but was intended to be on feature-branch",
+      '"feature-app" is on "main", but repository download information specifies "feature-branch"',
     );
   });
 
@@ -131,7 +143,7 @@ describe("runDoctorChecks", () => {
       ],
     });
     expect(report.warnings).toEqual([
-      "apps/broken/.boot/repo.json is invalid; placeholder branch checks were skipped",
+      "apps/broken/.boot/repo.json is invalid; repository branch checks were skipped. Run `boot pull` from the workspace root to recreate it",
     ]);
   });
 
@@ -145,7 +157,9 @@ describe("runDoctorChecks", () => {
     });
     expect(report.placeholdersChecked).toBe(2);
     expect(report.reposChecked).toBe(0);
-    expect(report.warnings).toContain("experiments/receipts is a placeholder with no remote URL");
+    expect(report.warnings).toContain(
+      "experiments/receipts is a placeholder with no remote URL; add its URL to boot.yaml before downloading it",
+    );
   });
 
   it("flags repos that diverged from their upstream and counts them", () => {
@@ -160,10 +174,14 @@ describe("runDoctorChecks", () => {
     });
     expect(report.divergedCount).toBe(1);
     expect(report.warnings).toContain(
-      "forked has diverged from its upstream (2 ahead, 5 behind) — merge or rebase to reconcile",
+      '"forked" has diverged from its tracked remote branch (2 ahead, 5 behind); merge or rebase before automatic updates can continue',
     );
-    expect(report.warnings.some((w) => w.includes("just-ahead has diverged"))).toBe(false);
-    expect(report.warnings.some((w) => w.includes("just-behind has diverged"))).toBe(false);
+    expect(report.warnings.some((warning) => warning.includes('"just-ahead" has diverged'))).toBe(
+      false,
+    );
+    expect(report.warnings.some((warning) => warning.includes('"just-behind" has diverged'))).toBe(
+      false,
+    );
   });
 
   it("flags stale repos based on staleAfterDays", () => {
@@ -171,7 +189,9 @@ describe("runDoctorChecks", () => {
       ...base,
       repos: [repo({ name: "old", lastCommitDate: new Date("2026-01-01T00:00:00.000Z") })],
     });
-    expect(report.warnings.some((w) => /old last commit is \d+ days old/.test(w))).toBe(true);
+    expect(report.warnings).toContain(
+      '"old" last commit was 174 days ago (warning threshold: 30 days)',
+    );
   });
 
   it("flags missing lockfiles, generated folders, and a missing ignore file", () => {
@@ -182,8 +202,12 @@ describe("runDoctorChecks", () => {
         repo({ name: "nolock", packageManager: null, presentGeneratedDirs: ["node_modules"] }),
       ],
     });
-    expect(report.warnings).toContain(`workspace has no ${IGNORE_FILE_NAME}`);
-    expect(report.warnings).toContain("nolock has a package.json but no lockfile");
-    expect(report.warnings).toContain("nolock has node_modules present; this should not be synced later");
+    expect(report.warnings).toContain(
+      `workspace has no ${IGNORE_FILE_NAME}; only built-in exclusions apply`,
+    );
+    expect(report.warnings).toContain('"nolock" has a package.json but no lockfile');
+    expect(report.warnings).toContain(
+      '"nolock" contains "node_modules" at the repository root',
+    );
   });
 });

@@ -51,7 +51,11 @@ describe("FolderTransport", () => {
     await fs.mkdir(mapDir, { recursive: true });
     await fs.writeFile(path.join(mapDir, "workspace.json"), '{"real":true}');
 
-    await expect(new FolderTransport(mapDir, folder).pull()).rejects.toThrow(/iCloud placeholder/);
+    await expect(new FolderTransport(mapDir, folder).pull()).rejects.toThrow(
+      new Error(
+        `Cannot pull from synced folder because iCloud has not downloaded every file in "${folder}": "workspace.json.icloud". Wait for iCloud to download the files, then retry.`,
+      ),
+    );
     expect(await fs.readFile(path.join(mapDir, "workspace.json"), "utf8")).toBe('{"real":true}');
     expect(existsSync(path.join(mapDir, "workspace.json.icloud"))).toBe(false);
   });
@@ -75,7 +79,9 @@ describe("FolderTransport", () => {
     await fs.writeFile(path.join(mapDir, "workspace.json.icloud"), "<plist></plist>");
 
     await expect(new FolderTransport(mapDir, folder).push("msg")).rejects.toThrow(
-      /iCloud placeholder/,
+      new Error(
+        `Cannot push local map because iCloud has not downloaded every file in "${mapDir}": "workspace.json.icloud". Wait for iCloud to download the files, then retry.`,
+      ),
     );
     expect(existsSync(path.join(folder, "workspace.json.icloud"))).toBe(false);
   });

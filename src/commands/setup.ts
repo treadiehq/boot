@@ -58,10 +58,16 @@ async function offer(question: string, optValue: boolean | undefined, yes: boole
   return confirm(question, { default: true });
 }
 
+function commandArg(value: string): string {
+  if (/^[A-Za-z0-9_./:@%+=,-]+$/.test(value)) return value;
+  if (process.platform === "win32") return `'${value.replace(/'/g, "''")}'`;
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
 function resolveSetupShell(option: string | undefined): SupportedShell | null {
   if (option) {
     if (!isSupportedShell(option)) {
-      throw new Error(`Unsupported shell "${option}". Supported: zsh, bash, fish, powershell.`);
+      throw new Error(`Shell "${option}" is not supported. Use zsh, bash, fish, or powershell.`);
     }
     return option;
   }
@@ -78,7 +84,7 @@ async function appendHookToRc(rcPath: string, shell: SupportedShell): Promise<bo
   }
   if (existing.includes("boot shell-hook")) return false;
   const needsLeadingNewline = existing.length > 0 && !existing.endsWith("\n");
-  const block = `${needsLeadingNewline ? "\n" : ""}\n# boot on-access hydration\n${hookEvalLine(shell)}\n`;
+  const block = `${needsLeadingNewline ? "\n" : ""}\n# boot: clone repository placeholders on access\n${hookEvalLine(shell)}\n`;
   await fs.mkdir(path.dirname(rcPath), { recursive: true });
   await fs.appendFile(rcPath, block, "utf8");
   return true;
@@ -95,20 +101,20 @@ export async function setupCommand(
   options: SetupOptions = {},
 ): Promise<void> {
   const root = path.resolve(workspacePath);
-  logger.heading(`boot setup — ${colors.cyan(root)}`);
+  logger.heading(`Set up workspace — ${colors.cyan(root)}`);
   logger.info();
 
   // 1. Link, or pull if this workspace is already linked.
-  logger.info(colors.bold("1. Map"));
+  logger.info(colors.bold("1. workspace map"));
   if (isLinked(root)) {
-    if (remote) logger.info(colors.dim("   already linked — pulling latest (provided remote ignored)"));
+    if (remote) logger.info(colors.dim("   Already linked. Ignored the remote and pulled the latest map."));
     await pullCommand(root, { eager: options.eager });
   } else {
     if (!remote) {
       throw new Error(
-        "This workspace isn't linked yet. Pass a map remote:\n" +
-          "  boot setup <git-url> [path]        (or)\n" +
-          "  boot setup --folder <dir> [path]",
+        "This workspace is not linked. Run one of:\n" +
+          `  boot link <map-remote> ${commandArg(root)}\n` +
+          `  boot link <map-folder> ${commandArg(root)} --folder`,
       );
     }
     await linkCommand(remote, root, { eager: options.eager, folder: options.folder, yes: options.yes });
@@ -122,17 +128,22 @@ export async function setupCommand(
 
   // 3. Shell hook (hydrate on cd).
   logger.info(colors.bold("3. Shell hook"));
-  if (await offer("   Add the on-access shell hook to your shell rc?", options.hook, options.yes)) {
+  if (await offer("   Add automatic placeholder cloning to your shell?", options.hook, options.yes)) {
     await setupHook(options);
   } else {
     const shell = detectShell();
-    const line = shell ? hookEvalLine(shell) : 'eval "$(boot shell-hook zsh)"';
-    logger.info(colors.dim(`   skipped — add later with:  ${line}`));
+    if (shell) {
+      logger.info(colors.dim(`   Skipped. Add it later with: ${hookEvalLine(shell)}`));
+    } else {
+      logger.info(
+        colors.dim("   Skipped. Set it up later with: boot shell-hook --help"),
+      );
+    }
   }
   logger.info();
 
   // 4. Managed daemon (keeps the workspace fresh, starts on boot).
-  logger.info(colors.bold("4. Background daemon"));
+  logger.info(colors.bold("4. Background sync"));
   if (await offer("   Install the background sync daemon as a managed service?", options.daemon, options.yes)) {
     await daemonInstall(root, {
       intervalSeconds: options.interval,
@@ -142,12 +153,14 @@ export async function setupCommand(
       entry: options.entry,
     });
   } else {
-    logger.info(colors.dim("   skipped — start it later with:  boot daemon install"));
+    logger.info(
+      colors.dim(`   Skipped. Install it later with: boot daemon install ${commandArg(root)}`),
+    );
   }
   logger.info();
 
   // 5. On-read mount (optional, advisory — it's a foreground process).
-  logger.info(colors.bold("5. On-read mount (optional)"));
+  logger.info(colors.bold("5. Mount on read (optional)"));
   setupMountHint(root, options);
   logger.info();
 
@@ -157,9 +170,9 @@ export async function setupCommand(
   logger.info();
   logger.success("Setup complete.");
   if (health.hookInstalled) {
-    logger.info(colors.dim("Restart your shell (or `source` your rc) to activate on-access hydration."));
+    logger.info(colors.dim("Start a new shell to enable automatic placeholder cloning."));
   }
-  logger.info(colors.dim("Re-check anytime with:  boot doctor --system"));
+  logger.next(`Check setup again: boot doctor ${commandArg(root)} --system`);
 }
 
 async function setupKey(root: string, options: SetupOptions): Promise<void> {
@@ -168,7 +181,7 @@ async function setupKey(root: string, options: SetupOptions): Promise<void> {
     return;
   }
   if (options.key === false) {
-    logger.info(colors.dim("   skipped (--no-key)"));
+    logger.info(colors.dim("   Skipped because --no-key was set."));
     return;
   }
   if (options.importKey) {
@@ -178,12 +191,12 @@ async function setupKey(root: string, options: SetupOptions): Promise<void> {
 
   const mapDir = mapPaths(root).mapDir;
 
-  // Preferred path: the map escrows a passphrase-wrapped key. Unlock it instead
-  // of hand-copying the raw key from another machine.
+  // Preferred path: the map stores a passphrase-protected key. Install it
+  // instead of hand-copying the raw key from another machine.
   if (await hasKeyringEntry(mapDir)) {
-    logger.info(colors.dim("   this map has a passphrase-protected key (via `boot env key share`)."));
+    logger.info(colors.dim("   The workspace map has a passphrase-protected key."));
     if (isInteractive() && !options.yes) {
-      if (await confirm("   Unlock it now with the passphrase?", { default: true })) {
+      if (await confirm("   Install it now with the passphrase?", { default: true })) {
         try {
           await envKeyReceive({ cwd: root });
           return;
@@ -192,7 +205,9 @@ async function setupKey(root: string, options: SetupOptions): Promise<void> {
         }
       }
     }
-    logger.info(colors.dim("   skipped — unlock later with:  boot env key receive"));
+    logger.info(
+      colors.dim(`   Skipped. Install it later with: boot env key receive -C ${commandArg(root)}`),
+    );
     return;
   }
 
@@ -200,15 +215,18 @@ async function setupKey(root: string, options: SetupOptions): Promise<void> {
   // key — creating a fresh one would just fail to decrypt them.
   const scopes = await listScopes(mapDir);
   if (scopes.length > 0) {
-    logger.warn(`this map has ${scopes.length} encrypted env scope(s) but no key on this machine.`);
+    const sets = scopes.length === 1 ? "set" : "sets";
+    logger.warn(
+      `The workspace map has ${scopes.length} encrypted environment ${sets}, but this machine has no key.`,
+    );
     if (isInteractive() && !options.yes) {
-      const key = (await input("   Paste a key from `boot env key export` (or leave blank to skip):")).trim();
+      const key = (await input("   Paste an exported key, or leave this blank to skip:")).trim();
       if (key) {
         await envKeyImport(key);
         return;
       }
     }
-    logger.info(colors.dim("   skipped — import it with:  boot env key import <key>"));
+    logger.info(colors.dim("   Skipped. Import it later with: boot env key import"));
     return;
   }
 
@@ -216,15 +234,15 @@ async function setupKey(root: string, options: SetupOptions): Promise<void> {
   if (options.yes || !isInteractive() || (await confirm("   Create a secret key for env-var sync?", { default: true }))) {
     await envInit();
   } else {
-    logger.info(colors.dim("   skipped — create later with:  boot env init"));
+    logger.info(colors.dim("   Skipped. Create it later with: boot env init"));
   }
 }
 
 async function setupHook(options: SetupOptions): Promise<void> {
   const shell = resolveSetupShell(options.shell);
   if (!shell) {
-    logger.warn("could not detect your shell; add it manually:");
-    logger.info(colors.dim('   eval "$(boot shell-hook zsh)"   # or bash | fish | powershell'));
+    logger.warn("Could not detect your shell.");
+    logger.info(colors.dim("   Choose your shell with: boot shell-hook --help"));
     return;
   }
   const rcPath = rcPathFor(shell, options.home);
@@ -236,10 +254,12 @@ async function setupHook(options: SetupOptions): Promise<void> {
 function setupMountHint(root: string, options: SetupOptions): void {
   if (canLoadFuse()) {
     const mnt = options.mount ?? `${root}-live`;
-    logger.info(colors.dim(`   FUSE available — mount with:  boot mount ${root} ${mnt}`));
+    logger.info(
+      colors.dim(`   FUSE is available. Mount with: boot mount ${commandArg(root)} ${commandArg(mnt)}`),
+    );
   } else {
     logger.info(
-      colors.dim("   FUSE not installed (optional). Shell hook + `boot watch` already cover hydration."),
+      colors.dim("   FUSE is optional and not installed. The shell hook and `boot watch` still clone placeholders."),
     );
   }
 }

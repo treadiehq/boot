@@ -45,6 +45,12 @@ export interface ServiceUninstallOptions {
   runner?: ServiceRunner;
 }
 
+function commandArg(value: string): string {
+  if (/^[A-Za-z0-9_./:@%+=,-]+$/.test(value)) return value;
+  if (process.platform === "win32") return `'${value.replace(/'/g, "''")}'`;
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
 const NODE_LIKE_EXES = new Set(["node", "node.exe", "bun", "bun.exe"]);
 
 /**
@@ -77,7 +83,7 @@ async function runAll(commands: ServiceCommand[], runner: ServiceRunner): Promis
   for (const cmd of commands) {
     const { exitCode, output } = await runner(cmd.argv);
     if (exitCode !== 0 && !cmd.ignoreError) {
-      throw new Error(`\`${cmd.argv.join(" ")}\` failed: ${output || `exit ${exitCode}`}`);
+      throw new Error(`Could not update the background service: ${output || `exit ${exitCode}`}`);
     }
   }
 }
@@ -88,14 +94,16 @@ export async function daemonInstall(
 ): Promise<void> {
   const root = path.resolve(workspacePath);
   if (!isLinked(root)) {
-    throw new Error(`${root} is not linked. Run \`boot link <remote> ${workspacePath}\` first.`);
+    throw new Error(
+      `This workspace is not linked. Run: boot link <map-remote> ${commandArg(root)}`,
+    );
   }
 
   const platform = options.platform ?? detectServicePlatform();
   if (!platform) {
     throw new Error(
-      `Managed services are supported on macOS (launchd), Linux (systemd), and Windows ` +
-        `(Scheduled Tasks). On this platform, run \`boot daemon start\` yourself.`,
+      `Automatic background sync is not supported on this system. ` +
+        `Run: boot daemon start ${commandArg(root)}`,
     );
   }
 
@@ -107,9 +115,9 @@ export async function daemonInstall(
   const entry = options.entry ?? (isStandaloneBinary() ? "" : resolveEntry());
 
   if (entry.endsWith(".ts")) {
-    logger.warn(
-      "Installing a service that points at a TypeScript entry. Run `pnpm build` and install " +
-        "the built `boot` (or pass --entry) so the service can start without tsx.",
+    logger.warn("The background service points to TypeScript and may not start.");
+    logger.next(
+      `Build with \`pnpm build\`, then reinstall: boot daemon install ${commandArg(root)}`,
     );
   }
 
@@ -134,18 +142,18 @@ export async function daemonInstall(
   const data = encoding === "utf16le" ? `\ufeff${rendered}` : rendered;
   await fs.writeFile(filePath, data, encoding);
 
-  logger.heading(`Installing ${colors.cyan(serviceName(platform, root))} (${platform})`);
-  logger.success(`wrote ${filePath}`);
+  logger.heading(`Install background sync — ${colors.cyan(serviceName(platform, root))}`);
+  logger.success(`Wrote ${filePath}.`);
 
   const uid = process.getuid?.() ?? 0;
   const runner = options.runner ?? defaultRunner;
   await runAll(installCommands(platform, root, filePath, uid), runner);
 
-  logger.success("service loaded and enabled");
+  logger.success("Background sync installed.");
   logger.info();
-  logger.info(`The daemon now syncs ${colors.cyan(root)} every ${intervalSeconds}s and restarts on boot.`);
+  logger.info(`It syncs ${colors.cyan(root)} every ${intervalSeconds}s and starts at login.`);
   logger.info(colors.dim(`Logs: ${spec.logFile}`));
-  logger.info(colors.dim("Remove it with:  boot daemon uninstall"));
+  logger.next(`Remove it: boot daemon uninstall ${commandArg(root)}`);
 }
 
 export async function daemonUninstall(
@@ -156,24 +164,24 @@ export async function daemonUninstall(
 
   const platform = options.platform ?? detectServicePlatform();
   if (!platform) {
-    throw new Error("Managed services are not supported on this platform.");
+    throw new Error("Automatic background sync is not supported on this system.");
   }
 
   const home = options.home ?? os.homedir();
   const filePath = serviceFilePath(platform, root, home);
   const runner = options.runner ?? defaultRunner;
 
-  logger.heading(`Removing ${colors.cyan(serviceName(platform, root))} (${platform})`);
+  logger.heading(`Remove background sync — ${colors.cyan(serviceName(platform, root))}`);
 
   const uid = process.getuid?.() ?? 0;
   await runAll(uninstallCommands(platform, root, uid), runner);
 
   await fs.rm(filePath, { force: true });
-  logger.success(`removed ${filePath}`);
+  logger.success(`Removed ${filePath}.`);
 
   const reload = reloadCommand(platform);
   if (reload) await runAll([reload], runner);
 
   logger.info();
-  logger.success("Service removed. The background daemon will no longer run.");
+  logger.success("Background sync removed.");
 }

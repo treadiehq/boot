@@ -121,7 +121,11 @@ describe("cdCommand (errors, no git needed)", () => {
   });
 
   it("fails with an actionable message when nothing matches", async () => {
-    await expect(cdCommand("zzz", { cwd: root, print: true })).rejects.toThrow(/No repo matches/);
+    await expect(cdCommand("zzz", { cwd: root, print: true })).rejects.toThrow(
+      new Error(
+        `No repository matches "zzz". Browse with \`boot cd -C ${root}\`, or list them with: boot status ${root}`,
+      ),
+    );
   });
 
   it("refuses an empty query when it cannot prompt", async () => {

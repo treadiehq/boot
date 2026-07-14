@@ -1,26 +1,71 @@
 import { execa, type Options } from "execa";
 import { existsSync } from "node:fs";
 import path from "node:path";
+import {
+  quoteUserValue,
+  sanitizeRemoteUrl,
+  subprocessFailureReason,
+} from "./userErrors";
 
 /**
  * Thin wrapper around the `git` binary using execa.
  * Read helpers never throw (they return null/false on failure) so a single bad
  * repo can't abort a whole scan; mutating helpers throw with useful messages.
  */
-async function git(args: string[], opts: Options = {}) {
-  return execa("git", args, { reject: false, ...opts });
+interface GitResult {
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+  errorCode?: string;
+}
+
+async function git(args: string[], opts: Options = {}): Promise<GitResult> {
+  try {
+    const result = await execa("git", args, {
+      reject: false,
+      timeout: 120_000,
+      stdin: "ignore",
+      ...opts,
+      env: {
+        ...process.env,
+        ...opts.env,
+        GIT_TERMINAL_PROMPT: "0",
+      },
+    });
+    return {
+      exitCode: result.exitCode ?? 1,
+      stdout: String(result.stdout ?? ""),
+      stderr: String(result.stderr ?? ""),
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      exitCode: 1,
+      stdout: "",
+      stderr: subprocessFailureReason(message),
+      errorCode: (error as NodeJS.ErrnoException)?.code,
+    };
+  }
+}
+
+function failureReason(output: unknown): string {
+  const reason = subprocessFailureReason(output);
+  return reason ? ` Reason: ${reason.replace(/[.!?]+$/, "")}.` : "";
 }
 
 /** Throw a friendly error if git is not installed / not on PATH. */
 export async function ensureGitAvailable(): Promise<void> {
-  try {
-    const res = await git(["--version"]);
-    if (res.exitCode === 0) return;
-  } catch {
-    // fall through to the thrown error below
+  const res = await git(["--version"]);
+  if (res.exitCode === 0) return;
+  if (res.errorCode === "ENOENT") {
+    throw new Error(
+      "Git was not found on this machine. Install Git and make sure `git` is on your PATH.",
+    );
   }
   throw new Error(
-    "Git was not found on this machine. Install Git and make sure `git` is on your PATH.",
+    "Git is installed but could not run." +
+      failureReason(res.stderr || res.stdout) +
+      " Run `git --version` for details, fix the reported problem, then retry.",
   );
 }
 
@@ -32,14 +77,14 @@ export function isGitRepo(dir: string): boolean {
 export async function getRemoteUrl(dir: string): Promise<string | null> {
   const res = await git(["-C", dir, "remote", "get-url", "origin"]);
   if (res.exitCode !== 0) return null;
-  const url = String(res.stdout).trim();
+  const url = res.stdout.trim();
   return url.length > 0 ? url : null;
 }
 
 export async function getCurrentBranch(dir: string): Promise<string | null> {
   const res = await git(["-C", dir, "rev-parse", "--abbrev-ref", "HEAD"]);
   if (res.exitCode !== 0) return null;
-  const branch = String(res.stdout).trim();
+  const branch = res.stdout.trim();
   // "HEAD" means detached HEAD or a repo with no commits yet.
   if (!branch || branch === "HEAD") return null;
   return branch;
@@ -48,13 +93,13 @@ export async function getCurrentBranch(dir: string): Promise<string | null> {
 export async function isDirty(dir: string): Promise<boolean> {
   const res = await git(["-C", dir, "status", "--porcelain"]);
   if (res.exitCode !== 0) return false;
-  return String(res.stdout).trim().length > 0;
+  return res.stdout.trim().length > 0;
 }
 
 export async function getLastCommit(dir: string): Promise<string | null> {
   const res = await git(["-C", dir, "rev-parse", "HEAD"]);
   if (res.exitCode !== 0) return null;
-  const sha = String(res.stdout).trim();
+  const sha = res.stdout.trim();
   return sha.length > 0 ? sha : null;
 }
 
@@ -62,7 +107,7 @@ export async function getLastCommit(dir: string): Promise<string | null> {
 export async function getLastCommitDate(dir: string): Promise<Date | null> {
   const res = await git(["-C", dir, "log", "-1", "--format=%cI"]);
   if (res.exitCode !== 0) return null;
-  const iso = String(res.stdout).trim();
+  const iso = res.stdout.trim();
   if (!iso) return null;
   const date = new Date(iso);
   return Number.isNaN(date.getTime()) ? null : date;
@@ -81,22 +126,31 @@ export async function gitRemoteProbe(
   const res = await git(["ls-remote", remoteUrl, "HEAD"], {
     env: { GIT_TERMINAL_PROMPT: "0" },
   });
-  return { ok: res.exitCode === 0, detail: String(res.stderr || res.stdout).trim() };
+  return {
+    ok: res.exitCode === 0,
+    detail: res.exitCode === 0 ? "" : subprocessFailureReason(res.stderr || res.stdout),
+  };
 }
 
 export async function cloneRepo(remoteUrl: string, targetPath: string): Promise<void> {
   const res = await git(["clone", remoteUrl, targetPath]);
   if (res.exitCode !== 0) {
-    const detail = String(res.stderr || res.stdout).trim();
-    throw new Error(`git clone failed for ${remoteUrl}${detail ? `: ${detail}` : ""}`);
+    throw new Error(
+      `Could not download repository ${quoteUserValue(sanitizeRemoteUrl(remoteUrl), 500)}.` +
+        failureReason(res.stderr || res.stdout) +
+        " Check the repository URL and your access, then retry.",
+    );
   }
 }
 
 export async function checkoutBranch(repoPath: string, branch: string): Promise<void> {
   const res = await git(["-C", repoPath, "checkout", branch]);
   if (res.exitCode !== 0) {
-    const detail = String(res.stderr || res.stdout).trim();
-    throw new Error(`git checkout ${branch} failed${detail ? `: ${detail}` : ""}`);
+    throw new Error(
+      `Could not switch to branch ${quoteUserValue(branch)}.` +
+        failureReason(res.stderr || res.stdout) +
+        " Check that the branch exists and the repository has no conflicting changes, then retry.",
+    );
   }
 }
 
@@ -108,13 +162,17 @@ export async function checkoutBranch(repoPath: string, branch: string): Promise<
 /** Porcelain status output for a repo (empty string when clean or on error). */
 export async function gitStatusPorcelain(dir: string): Promise<string> {
   const res = await git(["-C", dir, "status", "--porcelain"]);
-  return res.exitCode === 0 ? String(res.stdout) : "";
+  return res.exitCode === 0 ? res.stdout : "";
 }
 
 async function gitAddAll(dir: string): Promise<void> {
   const res = await git(["-C", dir, "add", "-A"]);
   if (res.exitCode !== 0) {
-    throw new Error(`git add failed: ${String(res.stderr || res.stdout).trim()}`);
+    throw new Error(
+      "Could not stage workspace data." +
+        failureReason(res.stderr || res.stdout) +
+        " Check the linked repository, then retry.",
+    );
   }
 }
 
@@ -124,7 +182,7 @@ async function gitAddAll(dir: string): Promise<void> {
  */
 export async function gitCurrentBranchName(dir: string): Promise<string> {
   const res = await git(["-C", dir, "symbolic-ref", "--short", "HEAD"]);
-  const name = String(res.stdout).trim();
+  const name = res.stdout.trim();
   return name.length > 0 ? name : "main";
 }
 
@@ -149,7 +207,11 @@ export async function gitCommitAll(dir: string, message: string): Promise<boolea
     message,
   ]);
   if (res.exitCode !== 0) {
-    throw new Error(`git commit failed: ${String(res.stderr || res.stdout).trim()}`);
+    throw new Error(
+      "Could not save workspace data to Git." +
+        failureReason(res.stderr || res.stdout) +
+        " Check the linked repository, then retry.",
+    );
   }
   return true;
 }
@@ -170,18 +232,22 @@ export async function gitHasUnpushed(dir: string): Promise<boolean> {
     return head.exitCode === 0;
   }
   const res = await git(["-C", dir, "rev-list", "--count", "@{u}..HEAD"]);
-  return Number.parseInt(String(res.stdout).trim() || "0", 10) > 0;
+  return Number.parseInt(res.stdout.trim() || "0", 10) > 0;
 }
 
 /** Pull with rebase. Tolerates an empty remote / missing upstream; throws on real conflicts. */
 export async function gitPullRebase(dir: string): Promise<void> {
   const res = await git(["-C", dir, "pull", "--rebase", "--autostash"]);
   if (res.exitCode === 0) return;
-  const detail = String(res.stderr || res.stdout);
+  const detail = res.stderr || res.stdout;
   const benign =
     /no tracking information|did not specify a branch|couldn't find remote ref|no such ref|empty repository|unknown revision|ambiguous argument|does not appear to be a git repository/i;
   if (benign.test(detail)) return;
-  throw new Error(`git pull failed: ${detail.trim()}`);
+  throw new Error(
+    "Could not download the latest workspace data." +
+      failureReason(detail) +
+      " Resolve any Git conflict or access problem, then retry.",
+  );
 }
 
 /** Push the current branch, setting upstream on first push. */
@@ -189,7 +255,11 @@ export async function gitPush(dir: string): Promise<void> {
   const branch = await gitCurrentBranchName(dir);
   const res = await git(["-C", dir, "push", "-u", "origin", branch]);
   if (res.exitCode !== 0) {
-    throw new Error(`git push failed: ${String(res.stderr || res.stdout).trim()}`);
+    throw new Error(
+      "Could not upload workspace data." +
+        failureReason(res.stderr || res.stdout) +
+        " Check remote access and retry.",
+    );
   }
 }
 
@@ -208,7 +278,7 @@ export async function gitFetch(dir: string): Promise<boolean> {
 export async function gitUpstreamRef(dir: string): Promise<string | null> {
   const res = await git(["-C", dir, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]);
   if (res.exitCode !== 0) return null;
-  const ref = String(res.stdout).trim();
+  const ref = res.stdout.trim();
   return ref.length > 0 ? ref : null;
 }
 
@@ -223,7 +293,7 @@ export interface AheadBehind {
 export async function gitAheadBehind(dir: string): Promise<AheadBehind | null> {
   const res = await git(["-C", dir, "rev-list", "--left-right", "--count", "@{u}...HEAD"]);
   if (res.exitCode !== 0) return null;
-  const [left, right] = String(res.stdout).trim().split(/\s+/);
+  const [left, right] = res.stdout.trim().split(/\s+/);
   const behind = Number.parseInt(left ?? "0", 10);
   const ahead = Number.parseInt(right ?? "0", 10);
   if (Number.isNaN(behind) || Number.isNaN(ahead)) return null;

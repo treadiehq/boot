@@ -73,7 +73,12 @@ describe("manifest", () => {
   });
 
   it("throws for a missing manifest file", async () => {
-    await expect(readManifest(path.join(dir, "nope.json"))).rejects.toThrow(/not found/);
+    const file = path.join(dir, "nope.json");
+    await expect(readManifest(file)).rejects.toThrow(
+      new Error(
+        `No snapshot was found at "${file}". From the workspace root, create one with \`boot export . --output ${file}\`.`,
+      ),
+    );
   });
 
   it("throws for invalid JSON", async () => {
@@ -85,6 +90,10 @@ describe("manifest", () => {
   it("throws for a manifest that fails schema validation", async () => {
     const file = path.join(dir, "bad.json");
     await fs.writeFile(file, JSON.stringify({ version: "0.2", repos: [] }));
-    await expect(readManifest(file)).rejects.toThrow(/failed validation/);
+    await expect(readManifest(file)).rejects.toThrow(
+      new Error(
+        `Snapshot at "${file}" has an invalid format (createdAt: Invalid input: expected string, received undefined; workspace: Invalid input: expected object, received undefined; config: Invalid input: expected object, received undefined). From the workspace root, create a new one with \`boot export . --output ${file}\`.`,
+      ),
+    );
   });
 });
