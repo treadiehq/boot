@@ -1,15 +1,22 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { findAppRoot, retryCommand } from "../commands/update";
+
+const execaMock = vi.hoisted(() => vi.fn());
+
+vi.mock("execa", () => ({ execa: execaMock }));
+
+import { findAppRoot, retryCommand, updateBinaryUnix } from "../commands/update";
 
 let root: string;
 
 beforeEach(async () => {
+  execaMock.mockReset();
   root = await fs.mkdtemp(path.join(os.tmpdir(), "boot-update-"));
 });
 afterEach(async () => {
+  vi.restoreAllMocks();
   await fs.rm(root, { recursive: true, force: true });
 });
 
@@ -50,5 +57,27 @@ describe("retryCommand", () => {
 
   it("omits --ref when updating to the default target", () => {
     expect(retryCommand({})).toBe("boot update");
+  });
+});
+
+describe("updateBinaryUnix", () => {
+  it("propagates installer download failures instead of reporting success", async () => {
+    const output: string[] = [];
+    vi.spyOn(console, "log").mockImplementation((message?: unknown) => {
+      output.push(String(message ?? ""));
+    });
+    execaMock.mockImplementation(async (_command: string, args: string[]) => {
+      if (args[0] === "--version") return { stdout: "" };
+      if (String(args[1] ?? "").includes("set -o pipefail")) {
+        throw new Error("installer download failed");
+      }
+      return { stdout: "" };
+    });
+
+    await expect(updateBinaryUnix({})).rejects.toThrow("installer download failed");
+
+    const installerCall = execaMock.mock.calls.find((call) => call[1]?.[0] === "-c");
+    expect(installerCall?.[1]?.[1]).toContain("set -o pipefail");
+    expect(output.join("\n")).not.toContain("boot updated");
   });
 });

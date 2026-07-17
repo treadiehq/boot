@@ -29,6 +29,7 @@ function git(cwd: string, ...args: string[]): void {
 
 let root: string;
 let stdoutChunks: string[];
+let stderrChunks: string[];
 
 interface RepoSpec {
   name: string;
@@ -60,11 +61,15 @@ beforeEach(async () => {
     { name: "util", relativePath: "libs/util", remoteUrl: "git@example.com:me/util.git" },
   ]);
   stdoutChunks = [];
+  stderrChunks = [];
   vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
     stdoutChunks.push(String(chunk));
     return true;
   });
-  vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+  vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
+    stderrChunks.push(String(chunk));
+    return true;
+  });
   vi.spyOn(console, "log").mockImplementation(() => {});
 });
 
@@ -75,6 +80,10 @@ afterEach(async () => {
 
 function stdout(): string {
   return stdoutChunks.join("");
+}
+
+function stderr(): string {
+  return stderrChunks.join("");
 }
 
 async function seedRemote(name: string): Promise<string> {
@@ -168,5 +177,22 @@ describe.skipIf(!GIT_OK)("cdCommand (hydrating jump)", () => {
     const parsed = JSON.parse(stdout().trim());
     expect(parsed.path).toBe(dir);
     expect(parsed.hydrated).toBe(false);
+  });
+
+  it("reports no clone when revisiting a previously hydrated placeholder", async () => {
+    const remote = await seedRemote("util");
+    const dir = await makePlaceholder("libs/util", remote);
+
+    await cdCommand("util", { cwd: root, json: true });
+    expect(JSON.parse(stdout().trim()).hydrated).toBe(true);
+
+    stdoutChunks = [];
+    stderrChunks = [];
+    await cdCommand("util", { cwd: root, json: true });
+
+    const parsed = JSON.parse(stdout().trim());
+    expect(parsed.path).toBe(dir);
+    expect(parsed.hydrated).toBe(false);
+    expect(stderr()).not.toContain("cloning");
   });
 });

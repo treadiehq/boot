@@ -95,6 +95,11 @@ async function updateBinary(options: UpdateOptions): Promise<void> {
     return;
   }
 
+  await updateBinaryUnix(options);
+}
+
+/** Unix self-update via the public installer script. Exported for regression testing. */
+export async function updateBinaryUnix(options: UpdateOptions): Promise<void> {
   if (!(await hasCommand("bash")) || !(await hasCommand("curl"))) {
     logger.error("Cannot update because `curl` or `bash` is missing from PATH.");
     logger.next(`Install the missing tool, then run: ${retryCommand(options)}`);
@@ -109,7 +114,10 @@ async function updateBinary(options: UpdateOptions): Promise<void> {
 
   // Replacing the currently-running binary is safe on Unix: this process keeps
   // the old inode while the installer writes the new file into place.
-  await execa("bash", ["-c", `curl -fsSL ${INSTALL_URL} | bash`], { env, stdio: "inherit" });
+  await execa("bash", ["-c", `set -o pipefail; curl -fsSL ${INSTALL_URL} | bash`], {
+    env,
+    stdio: "inherit",
+  });
   logger.success("boot updated. Run `boot --version` to confirm.");
 }
 

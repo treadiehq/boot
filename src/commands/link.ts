@@ -139,7 +139,16 @@ export async function linkCommand(
       )
     : await withSpinner("cloning workspace map", () => cloneMap(remote, paths.mapDir));
 
-  let map = (await readWorkspaceMap(paths.mapDir)) ?? emptyWorkspaceMap(path.basename(root));
+  let map = emptyWorkspaceMap(path.basename(root));
+  try {
+    map = (await readWorkspaceMap(paths.mapDir)) ?? map;
+  } catch (error) {
+    // Transport initialization succeeded, so this command created mapDir.
+    // Roll it back when the imported map is invalid so a corrected retry can
+    // initialize cleanly instead of being mistaken for an existing link.
+    await fs.rm(paths.mapDir, { recursive: true, force: true });
+    throw error;
+  }
   await writeLinkConfig(root, { kind, remote, linkedAt: new Date().toISOString() });
 
   // Publish what this machine already has into the shared map.

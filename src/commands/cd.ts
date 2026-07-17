@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { findWorkspaceRoot } from "../core/autohydrate";
+import { isGitRepo } from "../core/git";
 import { hydratePlaceholder } from "../core/hydrate";
 import { loadRepoChoices, rankRepos, type RankedRepo } from "../core/locate";
 import { isPlaceholder } from "../core/placeholder";
@@ -67,10 +68,10 @@ export async function cdCommand(query = "", options: CdOptions = {}): Promise<vo
   }
 
   let hydrated = false;
-  if (isPlaceholder(target.absolutePath)) {
+  if (isPlaceholder(target.absolutePath) && !isGitRepo(target.absolutePath)) {
     note(colors.dim(`cloning ${target.relativePath}…`));
     const outcome = await hydratePlaceholder(target.absolutePath);
-    hydrated = true;
+    hydrated = outcome !== "already-hydrated";
     if (outcome === "hydrated-checkout-failed") {
       note(colors.yellow(`cloned ${target.relativePath}, but could not check out its saved branch`));
     }

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -24,6 +24,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await fs.rm(root, { recursive: true, force: true });
 });
 
@@ -73,6 +74,35 @@ describe("scanWorkspace", () => {
     await expect(scanWorkspace(path.join(root, "does-not-exist"))).rejects.toThrow(
       /does not exist/,
     );
+  });
+
+  it("fails instead of returning an incomplete scan when a directory is unreadable", async () => {
+    await mkdir("blocked");
+    const entries = await fs.readdir(root, { withFileTypes: true });
+    vi.spyOn(fs, "readdir")
+      .mockResolvedValueOnce(entries as never)
+      .mockRejectedValueOnce(Object.assign(new Error("permission denied"), { code: "EACCES" }));
+
+    await expect(scanWorkspace(root)).rejects.toThrow(
+      /Could not read workspace directory.*permission denied/,
+    );
+  });
+
+  it("tolerates a child directory disappearing during traversal", async () => {
+    await mkdir("vanished");
+    const entries = await fs.readdir(root, { withFileTypes: true });
+    const vanished = path.join(root, "vanished");
+    vi.spyOn(fs, "readdir")
+      .mockResolvedValueOnce(entries as never)
+      .mockImplementationOnce(async () => {
+        await fs.rm(vanished, { recursive: true, force: true });
+        throw Object.assign(new Error("directory disappeared"), { code: "ENOENT" });
+      });
+
+    const result = await scanWorkspace(root);
+
+    expect(result.repos).toEqual([]);
+    expect(result.otherFolders).toEqual([]);
   });
 });
 

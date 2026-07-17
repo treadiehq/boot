@@ -10,7 +10,14 @@ import {
   initFolderMap,
   loadTransport,
 } from "../core/transport";
-import { mapPaths, readWorkspaceMap, writeLinkConfig } from "../core/map";
+import {
+  emptyWorkspaceMap,
+  mapPaths,
+  readLinkConfig,
+  readWorkspaceMap,
+  writeLinkConfig,
+  writeWorkspaceMap,
+} from "../core/map";
 import { readPlaceholder } from "../core/placeholder";
 import { isGitRepo } from "../core/git";
 import { linkCommand } from "../commands/link";
@@ -231,6 +238,38 @@ describe.skipIf(!GIT_OK)("folder map sync across two machines (e2e)", () => {
     expect(existsSync(path.join(sharedFolder, "workspace.json"))).toBe(true);
     const map = await readWorkspaceMap(mapPaths(wsA).mapDir);
     expect(map?.repos.find((r) => r.relativePath === "apps/api")).toBeTruthy();
+  });
+
+  it("rolls back an invalid folder map so linking can be retried", async () => {
+    const brokenShared = path.join(e2eRoot, "broken-shared");
+    const recoveredWorkspace = path.join(e2eRoot, "recovered-workspace");
+    const recoveryHome = path.join(e2eRoot, "recovery-home");
+    await fs.mkdir(brokenShared, { recursive: true });
+    await fs.writeFile(
+      path.join(brokenShared, "workspace.json"),
+      JSON.stringify({ version: 1 }),
+    );
+
+    await expect(
+      asMachine(recoveryHome, () =>
+        linkCommand(brokenShared, recoveredWorkspace, { folder: true }),
+      ),
+    ).rejects.toThrow(/invalid format/);
+
+    const paths = mapPaths(recoveredWorkspace);
+    expect(existsSync(paths.bootDir)).toBe(true);
+    expect(existsSync(paths.mapDir)).toBe(false);
+    expect(existsSync(paths.linkPath)).toBe(false);
+
+    await writeWorkspaceMap(brokenShared, emptyWorkspaceMap("recovered"));
+    await expect(
+      asMachine(recoveryHome, () =>
+        linkCommand(brokenShared, recoveredWorkspace, { folder: true }),
+      ),
+    ).resolves.toBeUndefined();
+
+    expect((await readLinkConfig(recoveredWorkspace))?.kind).toBe("folder");
+    expect(existsSync(paths.mapDir)).toBe(true);
   });
 
   it("a second machine receives the structure as placeholders — no git remote involved", async () => {

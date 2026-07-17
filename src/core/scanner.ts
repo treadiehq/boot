@@ -126,8 +126,10 @@ async function walk(
   let entries;
   try {
     entries = await fs.readdir(dir, { withFileTypes: true });
-  } catch {
-    return; // unreadable directory — skip it gracefully
+  } catch (error) {
+    // A child may disappear between reading its parent and descending into it.
+    if (depth > 0 && isFileNotFoundError(error)) return;
+    throw fileReadError("workspace directory", dir, error);
   }
 
   for (const entry of entries) {
@@ -209,8 +211,8 @@ async function collectOtherFolders(
   let entries;
   try {
     entries = await fs.readdir(root, { withFileTypes: true });
-  } catch {
-    return [];
+  } catch (error) {
+    throw fileReadError("workspace directory", root, error);
   }
 
   const repoRoots = discovered.map((d) => d.dir);
