@@ -4,13 +4,13 @@ import { ensureGitAvailable } from "../core/git";
 import { hydratePlaceholder } from "../core/hydrate";
 import { withWorkspaceMapLock } from "../core/lock";
 import { isLinked, mapPaths, readWorkspaceMap } from "../core/map";
-import { reconcileFromMap } from "../core/reconcile";
+import { reconcileFromMap, type ReconcileResult } from "../core/reconcile";
 import { scanWorkspace } from "../core/scanner";
 import { keyExists, loadKey } from "../core/secrets";
 import { loadTransport } from "../core/transport";
 import { readPublishedWorkspace } from "../core/workspaceStore";
 import { colors, logger } from "../ui/logger";
-import { renderPlan, reconcileProgressHooks } from "../ui/plan";
+import { renderPlan, renderReconcileFailures, reconcileProgressHooks } from "../ui/plan";
 import { stepPrefix } from "../ui/progress";
 import { linkCommand } from "./link";
 import { upCommand } from "./up";
@@ -46,6 +46,10 @@ function matchesAny(relativePath: string, patterns: string[]): boolean {
   return patterns.some((p) => globToRegExp(p).test(relativePath));
 }
 
+function hasLegacyMaterializationOverrides(options: AgentOptions): boolean {
+  return Boolean(options.eager) || Boolean(options.all) || (options.hydrate?.length ?? 0) > 0;
+}
+
 /**
  * One-shot, non-interactive bootstrap for ephemeral environments (CI, cloud
  * agents, fresh containers). Idempotent: links the workspace on first run and
@@ -67,6 +71,7 @@ export async function agentCommand(
     return;
   }
 
+  let eagerFailures: ReconcileResult["failures"] = [];
   if (isLinked(root)) {
     // Already bootstrapped — just bring it up to date and re-apply structure.
     logger.success("The workspace map is already linked. Pulling latest changes.");
@@ -92,16 +97,25 @@ export async function agentCommand(
             `Cloned ${recon.cloned} ${recon.cloned === 1 ? "repository" : "repositories"}.`,
           );
         }
+        eagerFailures = recon.failures;
+        renderReconcileFailures(recon.failures);
       }
     });
   } else {
     await linkCommand(remote, root, { eager: options.eager, folder: options.folder });
   }
 
+  if (eagerFailures.length > 0) {
+    const extraFlags = `${options.folder ? " --folder" : ""}${options.env ? " --env" : ""}`;
+    throw new Error(
+      `The agent workspace is not ready: ${eagerFailures.length} ${
+        eagerFailures.length === 1 ? "repository" : "repositories"
+      } could not be cloned. Fix the reported problems, then run: boot agent ${commandArg(remote)} ${commandArg(root)} --eager${extraFlags}`,
+    );
+  }
+
   const published = await readPublishedWorkspace(mapPaths(root).mapDir);
-  const hasLegacyMaterializationOverrides =
-    Boolean(options.eager) || Boolean(options.all) || (options.hydrate?.length ?? 0) > 0;
-  if (published && !hasLegacyMaterializationOverrides) {
+  if (published && !hasLegacyMaterializationOverrides(options)) {
     await upCommand(root, {
       profile: published.profiles?.agent ? "agent" : undefined,
       provider: "local",
@@ -192,15 +206,28 @@ async function agentDryRun(remote: string, root: string, options: AgentOptions):
   }
 
   const paths = mapPaths(root);
+  const published = await readPublishedWorkspace(paths.mapDir);
   const map = await readWorkspaceMap(paths.mapDir);
   if (!map) {
     logger.warn("The cached workspace map is empty, so there is nothing to do.");
+  } else {
+    logger.info(colors.dim("Using the cached workspace map without pulling changes."));
+
+    const plan = await reconcileFromMap(root, map.repos, { eager: options.eager, dryRun: true });
+    renderPlan(plan);
+  }
+
+  if (published && !hasLegacyMaterializationOverrides(options)) {
+    logger.info();
+    await upCommand(root, {
+      profile: published.profiles?.agent ? "agent" : undefined,
+      provider: "local",
+      env: options.env,
+      dryRun: true,
+    });
     return;
   }
-  logger.info(colors.dim("Using the cached workspace map without pulling changes."));
-
-  const plan = await reconcileFromMap(root, map.repos, { eager: options.eager, dryRun: true });
-  renderPlan(plan);
+  if (!map) return;
 
   const patterns = options.hydrate ?? [];
   if (options.all || patterns.length > 0) {

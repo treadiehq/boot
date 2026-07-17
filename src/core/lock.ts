@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { pidAlive } from "./daemonState";
 import { BOOT_DIR_NAME } from "./map";
 
 export interface LockOptions {
@@ -33,6 +34,12 @@ export async function withFileLock<T>(
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
       const stat = await fs.stat(lockPath).catch(() => null);
       if (stat && Date.now() - stat.mtimeMs > staleAfterMs) {
+        const ownerText = await fs.readFile(lockPath, "utf8").catch(() => "");
+        const ownerPid = Number.parseInt(ownerText.trim(), 10);
+        if (Number.isSafeInteger(ownerPid) && ownerPid > 0 && pidAlive(ownerPid)) {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          continue;
+        }
         await fs.rm(lockPath, { force: true });
         continue;
       }

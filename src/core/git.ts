@@ -36,6 +36,7 @@ async function git(args: string[], opts: Options = {}): Promise<GitResult> {
       exitCode: result.exitCode ?? 1,
       stdout: String(result.stdout ?? ""),
       stderr: String(result.stderr ?? ""),
+      errorCode: result.code,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -202,6 +203,8 @@ export async function gitCommitAll(dir: string, message: string): Promise<boolea
     "user.name=boot",
     "-c",
     "user.email=boot@localhost",
+    "-c",
+    "commit.gpgSign=false",
     "commit",
     "-m",
     message,

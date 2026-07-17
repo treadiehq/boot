@@ -52,6 +52,7 @@ async function restoreLazy(target: string, repos: RepoEntry[]): Promise<void> {
   let skipped = 0;
   let existing = 0;
   let notHydratable = 0;
+  let firstHydratablePath: string | null = null;
 
   for (const repo of repos) {
     const repoPath = resolveWithinRoot(target, repo.relativePath);
@@ -75,6 +76,7 @@ async function restoreLazy(target: string, repos: RepoEntry[]): Promise<void> {
 
     if (repo.remoteUrl) {
       logger.success(`Prepared placeholder ${repo.relativePath}.`);
+      firstHydratablePath ??= repoPath;
     } else {
       logger.warn(`${repo.relativePath} has no remote, so its placeholder cannot clone it.`);
       notHydratable += 1;
@@ -88,20 +90,9 @@ async function restoreLazy(target: string, repos: RepoEntry[]): Promise<void> {
   logger.info(`Already cloned: ${skipped}`);
   logger.info(`Existing placeholders: ${existing}`);
   logger.info(`Cannot clone because no remote is set: ${notHydratable}`);
-  if (placeholders - notHydratable > 0) {
-    const first = repos.find(
-      (repo) =>
-        Boolean(repo.remoteUrl) &&
-        isPlaceholder(resolveWithinRoot(target, repo.relativePath)),
-    );
+  if (firstHydratablePath) {
     logger.info();
-    if (first) {
-      logger.next(
-        `Clone one now: boot hydrate ${commandArg(
-          resolveWithinRoot(target, first.relativePath),
-        )}`,
-      );
-    }
+    logger.next(`Clone one now: boot hydrate ${commandArg(firstHydratablePath)}`);
     const shell = detectShell();
     logger.next(
       shell

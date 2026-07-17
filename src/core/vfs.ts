@@ -35,6 +35,8 @@ export function toFuseError(err: unknown): number {
       return FUSE_ERRNO.EISDIR;
     case "EPERM":
       return FUSE_ERRNO.EPERM;
+    case "EROFS":
+      return FUSE_ERRNO.EROFS;
     case "EINVAL":
       return FUSE_ERRNO.EINVAL;
     case "EBADF":

@@ -53,6 +53,30 @@ describe("discoverWorkspace", () => {
     });
   });
 
+  it("distinguishes registry ports from image tags", async () => {
+    await fs.writeFile(
+      path.join(root, "compose.yaml"),
+      [
+        "services:",
+        "  database:",
+        "    image: localhost:5000/postgres:17",
+        "  cache:",
+        "    image: localhost:5000/redis",
+        "  application:",
+        "    image: registry.example.com:8443/team/app:v1",
+        "",
+      ].join("\n"),
+    );
+
+    const discovery = await discoverWorkspace(root);
+
+    expect(discovery.definition.services).toEqual({
+      database: { type: "postgres", version: "17" },
+      cache: { type: "redis" },
+      application: { type: "app", version: "v1" },
+    });
+  });
+
   it("adapts a legacy boot.yaml into the versioned Workspace model", async () => {
     await fs.writeFile(path.join(root, CONFIG_FILE_NAME), "workspace:\n  name: Legacy Code\n");
     const definition = await loadWorkspaceDefinition(root);

@@ -80,7 +80,8 @@ export function resolveWithinRoot(root: string, relativePath: string): string {
 
   const absoluteRoot = path.resolve(root);
   const target = path.resolve(absoluteRoot, ...relativePath.split("/"));
-  if (!target.startsWith(`${absoluteRoot}${path.sep}`)) {
+  const rootPrefix = absoluteRoot.endsWith(path.sep) ? absoluteRoot : `${absoluteRoot}${path.sep}`;
+  if (target !== absoluteRoot && !target.startsWith(rootPrefix)) {
     throw new Error(
       `Workspace path ${quoteUserValue(relativePath)} points outside the workspace. Use a relative path inside the workspace.`,
     );

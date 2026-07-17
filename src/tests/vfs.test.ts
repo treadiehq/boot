@@ -84,6 +84,7 @@ describe("toFuseError", () => {
     expect(toFuseError(Object.assign(new Error(), { code: "EACCES" }))).toBe(FUSE_ERRNO.EACCES);
     expect(toFuseError(Object.assign(new Error(), { code: "ENOTDIR" }))).toBe(FUSE_ERRNO.ENOTDIR);
     expect(toFuseError(Object.assign(new Error(), { code: "EBADF" }))).toBe(FUSE_ERRNO.EBADF);
+    expect(toFuseError(Object.assign(new Error(), { code: "EROFS" }))).toBe(FUSE_ERRNO.EROFS);
   });
 
   it("falls back to EIO for unknown errors", () => {
@@ -158,6 +159,15 @@ describe("createFuseOps", () => {
     ops.read("/x", 3, Buffer.alloc(7), 7, 0, cb);
     await new Promise((r) => setImmediate(r));
     expect(cb).toHaveBeenCalledWith(7);
+  });
+
+  it("maps a read-only create failure to EROFS", async () => {
+    const error = Object.assign(new Error("workspace is mounted read-only"), { code: "EROFS" });
+    const ops = createFuseOps(fakeOverlay({ create: () => Promise.reject(error) }));
+    const cb = vi.fn();
+    ops.create("/new.txt", 0o644, cb);
+    await new Promise((r) => setImmediate(r));
+    expect(cb).toHaveBeenCalledWith(FUSE_ERRNO.EROFS);
   });
 });
 

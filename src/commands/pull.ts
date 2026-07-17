@@ -14,7 +14,7 @@ import { reconcileFromMap } from "../core/reconcile";
 import { scanWorkspace } from "../core/scanner";
 import { loadTransport } from "../core/transport";
 import { colors, logger } from "../ui/logger";
-import { renderPlan, reconcileProgressHooks } from "../ui/plan";
+import { renderPlan, renderReconcileFailures, reconcileProgressHooks } from "../ui/plan";
 
 export interface PullOptions {
   eager?: boolean;
@@ -90,6 +90,7 @@ export async function pullCommand(workspacePath = ".", options: PullOptions = {}
         `Cloned ${recon.cloned} ${recon.cloned === 1 ? "repository" : "repositories"}.`,
       );
     }
+    renderReconcileFailures(recon.failures);
 
     // Record this machine's updated state. Best-effort: a failed publish of our
     // own state shouldn't fail the pull.
@@ -99,6 +100,14 @@ export async function pullCommand(workspacePath = ".", options: PullOptions = {}
       await transport.push(`pull: update ${identity.hostname} state`);
     } catch (err) {
       logger.warn(`Could not update this machine in the workspace map: ${(err as Error).message}`);
+    }
+
+    if (recon.failures.length > 0) {
+      throw new Error(
+        `The workspace map was updated, but ${recon.failures.length} ${
+          recon.failures.length === 1 ? "repository" : "repositories"
+        } could not be cloned. Fix the reported problems, then run: boot pull ${commandArg(root)} --eager`,
+      );
     }
 
     logger.info();

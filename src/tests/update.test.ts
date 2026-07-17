@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { findAppRoot } from "../commands/update";
+import { findAppRoot, retryCommand } from "../commands/update";
 
 let root: string;
 
@@ -40,5 +40,15 @@ describe("findAppRoot", () => {
     await fs.writeFile(lone, "");
 
     expect(findAppRoot(lone)).toBeNull();
+  });
+});
+
+describe("retryCommand", () => {
+  it("preserves the --ref option in retry instructions", () => {
+    expect(retryCommand({ ref: "v0.1.0" })).toBe("boot update --ref v0.1.0");
+  });
+
+  it("omits --ref when updating to the default target", () => {
+    expect(retryCommand({})).toBe("boot update");
   });
 });

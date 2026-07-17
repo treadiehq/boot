@@ -37,11 +37,34 @@ export function renderPlan(result: ReconcileResult): void {
   logger.next("Re-run without --dry-run to prepare the workspace.");
 }
 
+/** Report eager clone failures that safely fell back to placeholders. */
+export function renderReconcileFailures(failures: ReconcileResult["failures"]): void {
+  if (failures.length === 0) return;
+  logger.warn(
+    `Could not clone ${failures.length} ${
+      failures.length === 1 ? "repository" : "repositories"
+    }:`,
+  );
+  for (const failure of failures) {
+    logger.warn(`  ${failure.relativePath}: ${failure.message}`);
+  }
+  logger.warn(
+    `Prepared placeholders instead. Fix the reported ${
+      failures.length === 1 ? "problem" : "problems"
+    }, then retry.`,
+  );
+}
+
 /** Progress hooks that print a `[i/n]` line as each repo is materialised. */
 export function reconcileProgressHooks(): ReconcileHooks {
   return {
-    onItemDone: ({ index, total, ms, relativePath, action }) => {
-      const verb = action === "clone" ? "cloned" : "prepared";
+    onItemDone: ({ index, total, ms, relativePath, action, requestedAction }) => {
+      const verb =
+        requestedAction === "clone" && action === "placeholder"
+          ? "clone failed; prepared placeholder for"
+          : action === "clone"
+            ? "cloned"
+            : "prepared";
       logger.info(
         `${stepPrefix(index, total)} ${verb} ${colors.cyan(relativePath)} ${colors.dim(`(${fmtMs(ms)})`)}`,
       );

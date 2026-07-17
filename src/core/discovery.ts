@@ -103,7 +103,11 @@ async function discoverEnvironmentNames(directory: string): Promise<string[]> {
 function serviceFromImage(image: string | undefined): ServiceDefinition | null {
   if (!image) return null;
   const withoutDigest = image.split("@")[0]!;
-  const [imageName, version] = withoutDigest.split(":");
+  const lastSlash = withoutDigest.lastIndexOf("/");
+  const lastColon = withoutDigest.lastIndexOf(":");
+  const hasTag = lastColon > lastSlash;
+  const imageName = hasTag ? withoutDigest.slice(0, lastColon) : withoutDigest;
+  const version = hasTag ? withoutDigest.slice(lastColon + 1) : undefined;
   const type = imageName?.split("/").pop();
   if (!type) return null;
   return {

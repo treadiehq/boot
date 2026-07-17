@@ -117,9 +117,9 @@ values. During `boot up`, Boot writes selected encrypted values to plaintext
 
 ## Profiles
 
-Each selection is either `all` or an explicit list of IDs. Omitted selections
-mean all available definitions. References to unknown definitions fail
-validation.
+Each selection is either `all` or an explicit list of definition IDs; `env`
+selections use environment variable names. Omitted selections mean all
+available definitions. References to unknown definitions fail validation.
 
 ## Constraints
 

@@ -1,7 +1,20 @@
-import { describe, expect, it } from "vitest";
-import { inspectProcessEnvironment, versionSatisfies } from "../core/requirements";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const execaMock = vi.hoisted(() => vi.fn());
+
+vi.mock("execa", () => ({ execa: execaMock }));
+
+import {
+  inspectProcessEnvironment,
+  inspectTools,
+  versionSatisfies,
+} from "../core/requirements";
 
 describe("requirement inspection", () => {
+  beforeEach(() => {
+    execaMock.mockReset();
+  });
+
   it("matches common runtime version expressions", () => {
     expect(versionSatisfies("v24.3.1", "24")).toBe(true);
     expect(versionSatisfies("v24.3.1", ">=24")).toBe(true);
@@ -39,5 +52,23 @@ describe("requirement inspection", () => {
       if (previous === undefined) delete process.env.BOOT_REQUIREMENT_TEST;
       else process.env.BOOT_REQUIREMENT_TEST = previous;
     }
+  });
+
+  it("reports when a required binary is missing from PATH", async () => {
+    execaMock.mockResolvedValue({
+      exitCode: undefined,
+      code: "ENOENT",
+      stdout: "",
+      stderr: "",
+    });
+
+    await expect(inspectTools({ pnpm: ">=10" })).resolves.toEqual([
+      {
+        name: "pnpm",
+        required: ">=10",
+        state: "missing",
+        detail: '"pnpm" was not found on PATH; install it, then retry',
+      },
+    ]);
   });
 });

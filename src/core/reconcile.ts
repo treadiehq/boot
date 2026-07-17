@@ -22,9 +22,14 @@ export interface ReconcileItem {
 export interface ReconcileHooks {
   /** Called before each repo is materialised (real runs only). */
   onItem?: (info: { index: number; total: number } & ReconcileItem) => void;
-  /** Called after each repo, with elapsed time and the action actually taken. */
+  /** Called after each repo, with elapsed time and planned versus completed action. */
   onItemDone?: (
-    info: { index: number; total: number; ms: number } & ReconcileItem,
+    info: {
+      index: number;
+      total: number;
+      ms: number;
+      requestedAction: ReconcileAction;
+    } & ReconcileItem,
   ) => void;
 }
 
@@ -113,11 +118,29 @@ export async function reconcileFromMap(
     let taken: ReconcileAction = action;
 
     if (action === "clone" && repo.remoteUrl) {
-      await fs.mkdir(path.dirname(repoPath), { recursive: true });
+      const parentPath = path.dirname(repoPath);
+      await fs.mkdir(parentPath, { recursive: true });
+      const clonePath = await fs.mkdtemp(
+        path.join(parentPath, `.${path.basename(repoPath)}.boot-clone-`),
+      );
+      let cloneFailure: { error: unknown } | null = null;
       try {
-        await cloneRepo(repo.remoteUrl, repoPath);
+        await cloneRepo(repo.remoteUrl, clonePath);
         if (repo.branch) {
-          await checkoutBranch(repoPath, repo.branch).catch(() => undefined);
+          await checkoutBranch(clonePath, repo.branch).catch(() => undefined);
+        }
+      } catch (error) {
+        cloneFailure = { error };
+      }
+
+      if (!cloneFailure) {
+        try {
+          await fs.rename(clonePath, repoPath);
+        } catch {
+          await fs.rm(clonePath, { recursive: true, force: true }).catch(() => undefined);
+          throw new Error(
+            `Could not finish creating repository at ${quoteUserValue(repo.relativePath)}. Check that the destination is writable and does not already exist, then retry.`,
+          );
         }
         result.cloned += 1;
         options.hooks?.onItemDone?.({
@@ -126,16 +149,22 @@ export async function reconcileFromMap(
           ms: Date.now() - started,
           relativePath: repo.relativePath,
           action: "clone",
+          requestedAction: action,
         });
         continue;
-      } catch (error) {
-        // Clone failed — fall through and leave a placeholder for a later retry.
-        result.failures.push({
-          relativePath: repo.relativePath,
-          message: (error as Error).message,
-        });
-        taken = "placeholder";
       }
+
+      // Clone failed — remove only boot's temporary directory, then leave a
+      // clean placeholder at the untouched final path for a later retry.
+      await fs.rm(clonePath, { recursive: true, force: true }).catch(() => undefined);
+      result.failures.push({
+        relativePath: repo.relativePath,
+        message:
+          cloneFailure.error instanceof Error
+            ? cloneFailure.error.message
+            : String(cloneFailure.error),
+      });
+      taken = "placeholder";
     }
 
     await fs.mkdir(repoPath, { recursive: true });
@@ -155,6 +184,7 @@ export async function reconcileFromMap(
       ms: Date.now() - started,
       relativePath: repo.relativePath,
       action: taken,
+      requestedAction: action,
     });
   }
 

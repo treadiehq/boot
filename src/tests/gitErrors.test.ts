@@ -4,7 +4,7 @@ const execaMock = vi.hoisted(() => vi.fn());
 
 vi.mock("execa", () => ({ execa: execaMock }));
 
-import { cloneRepo } from "../core/git";
+import { cloneRepo, ensureGitAvailable } from "../core/git";
 
 describe("user-facing Git failures", () => {
   beforeEach(() => {
@@ -37,5 +37,18 @@ describe("user-facing Git failures", () => {
     expect(message).not.toContain("Bearer secret");
     expect(message).not.toContain("\u001b");
     expect(message).not.toContain("\n");
+  });
+
+  it("reports when the git binary is missing", async () => {
+    execaMock.mockResolvedValue({
+      exitCode: undefined,
+      code: "ENOENT",
+      stdout: "",
+      stderr: "",
+    });
+
+    await expect(ensureGitAvailable()).rejects.toThrow(
+      "Git was not found on this machine. Install Git and make sure `git` is on your PATH.",
+    );
   });
 });

@@ -57,14 +57,15 @@ export const commandDefinitionSchema = z.union([
 
 export type CommandDefinition = z.infer<typeof commandDefinitionSchema>;
 
+const environmentVariableNameSchema = z
+  .string()
+  .regex(/^[A-Za-z_][A-Za-z0-9_]*$/, "must be an environment variable name");
+
 export const environmentRequirementSchema = z.union([
-  z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/, "must be an environment variable name"),
+  environmentVariableNameSchema,
   z
     .object({
-      name: z.string().regex(
-        /^[A-Za-z_][A-Za-z0-9_]*$/,
-        "must be an environment variable name",
-      ),
+      name: environmentVariableNameSchema,
       description: z.string().min(1).optional(),
       secret: z.boolean().default(true),
       source: z.string().min(1).optional(),
@@ -75,6 +76,10 @@ export const environmentRequirementSchema = z.union([
 export type EnvironmentRequirement = z.infer<typeof environmentRequirementSchema>;
 
 const selectionSchema = z.union([z.literal("all"), z.array(identifierSchema)]);
+const environmentSelectionSchema = z.union([
+  z.literal("all"),
+  z.array(environmentVariableNameSchema),
+]);
 
 export const profileDefinitionSchema = z
   .object({
@@ -82,7 +87,7 @@ export const profileDefinitionSchema = z
     tools: selectionSchema.optional(),
     services: selectionSchema.optional(),
     commands: selectionSchema.optional(),
-    env: selectionSchema.optional(),
+    env: environmentSelectionSchema.optional(),
     hydrate: materializationSchema.optional(),
     readOnly: z.boolean().optional(),
   })

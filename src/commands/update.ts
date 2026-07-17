@@ -25,8 +25,8 @@ function commandArg(value: string): string {
   return `'${value.replace(/'/g, "'\\''")}'`;
 }
 
-function retryCommand(options: UpdateOptions): string {
-  return options.ref ? `boot update ${commandArg(options.ref)}` : "boot update";
+export function retryCommand(options: UpdateOptions): string {
+  return options.ref ? `boot update --ref ${commandArg(options.ref)}` : "boot update";
 }
 
 /**

@@ -27,7 +27,7 @@ import { scanWorkspace } from "../core/scanner";
 import { cloneMap, initFolderMap, type MapTransport } from "../core/transport";
 import { writePublishedWorkspace } from "../core/workspaceStore";
 import { colors, logger } from "../ui/logger";
-import { reconcileProgressHooks } from "../ui/plan";
+import { renderReconcileFailures, reconcileProgressHooks } from "../ui/plan";
 import { withSpinner } from "../ui/progress";
 import { confirm, isInteractive } from "../ui/prompt";
 
@@ -171,12 +171,21 @@ export async function linkCommand(
       `Cloned ${recon.cloned} ${recon.cloned === 1 ? "repository" : "repositories"}.`,
     );
   }
+  renderReconcileFailures(recon.failures);
 
   // Register this machine (rescan so freshly-written placeholders are included).
   const rescan = await scanWorkspace(root);
   await writeMachineState(paths.mapDir, machineStateFromScan(identity, root, rescan.repos));
 
   await transport.push(`link: ${identity.hostname} (${shortId(identity.machineId)})`);
+
+  if (recon.failures.length > 0) {
+    throw new Error(
+      `The workspace was linked, but ${recon.failures.length} ${
+        recon.failures.length === 1 ? "repository" : "repositories"
+      } could not be cloned. Fix the reported problems, then run: boot pull ${commandArg(root)} --eager`,
+    );
+  }
 
   logger.info();
   logger.success(

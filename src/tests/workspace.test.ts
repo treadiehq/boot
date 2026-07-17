@@ -55,6 +55,20 @@ describe("Workspace definition", () => {
     expect(resolved.constraints).toHaveLength(1);
   });
 
+  it("allows underscore-prefixed environment names in Profile selections", () => {
+    const parsed = workspaceDefinitionSchema.parse({
+      schemaVersion: 1,
+      workspace: { id: "test/workspace", name: "test" },
+      repositories: { main: { path: "main" } },
+      env: { required: ["_JAVA_OPTIONS"] },
+      profiles: { agent: { env: ["_JAVA_OPTIONS"] } },
+    });
+
+    expect(resolveWorkspace(parsed, "agent").env.map((requirement) => requirement.name)).toEqual([
+      "_JAVA_OPTIONS",
+    ]);
+  });
+
   it("uses the default Profile when none is requested", () => {
     expect(resolveWorkspace(definition()).profile).toBe("local");
   });

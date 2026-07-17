@@ -31,7 +31,7 @@ async function runProbe(command: string, args: string[]): Promise<CommandResult>
     return {
       ok: result.exitCode === 0,
       output: sanitizeUserText(result.stdout || result.stderr),
-      notFound: false,
+      notFound: result.code === "ENOENT",
     };
   } catch (error) {
     return {

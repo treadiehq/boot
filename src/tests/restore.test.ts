@@ -17,7 +17,13 @@ vi.mock("../core/git", async (importOriginal) => {
 import { checkoutBranch, cloneRepo } from "../core/git";
 import { buildManifest, writeManifest, type ManifestConfig, type RepoEntry } from "../core/manifest";
 import { DEFAULT_IGNORE_RULES } from "../core/ignore";
-import { isPlaceholder, readPlaceholder, placeholderPaths } from "../core/placeholder";
+import {
+  buildPlaceholderMeta,
+  isPlaceholder,
+  readPlaceholder,
+  placeholderPaths,
+  writePlaceholder,
+} from "../core/placeholder";
 import { restoreCommand } from "../commands/restore";
 
 const cloneMock = vi.mocked(cloneRepo);
@@ -143,6 +149,22 @@ describe("restore --lazy", () => {
     expect(secondCreatedAt).toBe(firstCreatedAt);
     expect(logs.join("\n")).toContain("apps/kplane already has a placeholder.");
     expect(logs.join("\n")).toContain("Existing placeholders: 1");
+  });
+
+  it("suggests a new placeholder instead of an already-cloned repository", async () => {
+    const cloned = repo({ name: "cloned", relativePath: "apps/cloned" });
+    const pending = repo({ name: "pending", relativePath: "apps/pending" });
+    const file = await manifestFile([cloned, pending]);
+    const target = path.join(dir, "restored");
+    const clonedDir = path.join(target, cloned.relativePath);
+    await fs.mkdir(path.join(clonedDir, ".git"), { recursive: true });
+    await writePlaceholder(clonedDir, buildPlaceholderMeta(cloned, "hydrated"));
+
+    await restoreCommand(file, target, { lazy: true });
+
+    const suggestion = logs.find((line) => line.includes("Clone one now:"));
+    expect(suggestion).toContain("apps/pending");
+    expect(suggestion).not.toContain("apps/cloned");
   });
 });
 
