@@ -135,6 +135,33 @@ export function buildProgram(): Command {
       "\nExamples:\n  boot inspect\n  boot inspect . --profile agent\n  boot inspect . --json\n",
     );
 
+  program
+    .command("agent")
+    .description("prepare a fresh CI or cloud-agent workspace in one step")
+    .argument("<remote>", "published workspace map URL or synced folder")
+    .argument("[workspacePath]", "workspace to prepare", ".")
+    .option("--profile <profile>", "workspace profile to prepare")
+    .option("--provider <provider>", "workspace provider to use", "local")
+    .option("--run-setup", "run selected setup commands from boot.yaml", false)
+    .option("--env", "write encrypted environment values (compatibility alias)")
+    .option("--no-env", "check encrypted values without writing .env files")
+    .option("--folder", "use a synced folder for the workspace map", false)
+    .option("--dry-run", "show the plan without changing the workspace", false)
+    .option("--json", "write JSON only to stdout", false)
+    .option("--eager", "clone every map repository (compatibility)", false)
+    .option("--all", "clone every map placeholder (compatibility)", false)
+    .option(
+      "--hydrate <patterns...>",
+      "clone map placeholders matching path globs (compatibility)",
+    )
+    .action((remote: string, workspacePath: string, options: AgentOptions) =>
+      agentCommand(remote, workspacePath, options),
+    )
+    .addHelpText(
+      "after",
+      '\nExamples:\n  boot agent git@github.com:me/code-map.git ~/code\n  boot agent git@github.com:me/code-map.git ~/code --profile agent --run-setup\n  boot agent git@github.com:me/code-map.git ~/code --dry-run --json\n',
+    );
+
   program.commandsGroup("Other commands:");
 
   program
@@ -345,28 +372,6 @@ export function buildProgram(): Command {
     .addHelpText(
       "after",
       "\nExamples:\n  boot pull\n  boot pull ~/code --dry-run\n  boot pull ~/code --eager\n",
-    );
-
-  program
-    .command("agent")
-    .description("set up an existing map workflow for CI or a cloud agent")
-    .argument("<remote>", "workspace map URL or synced folder")
-    .argument("[workspacePath]", "workspace to set up", ".")
-    .option("--eager", "clone every repo instead of writing placeholders", false)
-    .option("--all", "clone every placeholder", false)
-    .option(
-      "--hydrate <patterns...>",
-      "clone placeholders matching these path globs",
-    )
-    .option("--env", "write .env files when a secret key is available", false)
-    .option("--folder", "use a synced folder for the workspace map", false)
-    .option("--dry-run", "show changes without writing files", false)
-    .action((remote: string, workspacePath: string, options: AgentOptions) =>
-      agentCommand(remote, workspacePath, options),
-    )
-    .addHelpText(
-      "after",
-      '\nExamples:\n  boot agent git@github.com:me/code-map.git ~/code\n  boot agent git@github.com:me/code-map.git ~/code --hydrate "services/*" --env\n  boot agent ~/Sync/code-map ~/code --folder --dry-run\n',
     );
 
   const env = program

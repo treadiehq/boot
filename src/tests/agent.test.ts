@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
+import { stringify as stringifyYaml } from "yaml";
 import { agentCommand } from "../commands/agent";
 import { envInit, envKeyImport, envSet } from "../commands/env";
 import { linkCommand } from "../commands/link";
@@ -12,6 +13,7 @@ import { isGitRepo } from "../core/git";
 import { isLinked } from "../core/map";
 import { parseDotenv } from "../core/env";
 import { readPlaceholder } from "../core/placeholder";
+import { CONFIG_FILE_NAME } from "../core/config";
 
 function gitUsable(): boolean {
   let probe: string | null = null;
@@ -113,11 +115,11 @@ describe.skipIf(!GIT_OK)("agent bootstrap (e2e)", () => {
     expect(isGitRepo(path.join(wsC, "apps", "api"))).toBe(true);
   });
 
-  it("skips env without a key, then materializes once the key is present", async () => {
-    // No key on machine C yet → best-effort skip, no throw.
+  it("requires a key before materializing requested environment values", async () => {
+    // No key on machine C yet → requested materialization is a readiness failure.
     await expect(
       asMachine(homeC, () => agentCommand(mapRemote, wsC, { env: true })),
-    ).resolves.toBeUndefined();
+    ).rejects.toThrow(/agent workspace is not ready/i);
 
     // Bring the key over and re-run with --env.
     process.env.BOOT_HOME = homeA;
@@ -128,5 +130,97 @@ describe.skipIf(!GIT_OK)("agent bootstrap (e2e)", () => {
 
     const env = parseDotenv(await fs.readFile(path.join(wsC, ".env"), "utf8"));
     expect(env.API_KEY).toBe("secret123");
+  });
+});
+
+describe.skipIf(!GIT_OK)("published agent workspace (e2e)", () => {
+  let root: string;
+  let mapRemote: string;
+  let authorHome: string;
+  let agentHome: string;
+  let authorWorkspace: string;
+  let agentWorkspace: string;
+  const previousHome = process.env.BOOT_HOME;
+
+  async function asMachine(home: string, fn: () => Promise<void>): Promise<void> {
+    process.env.BOOT_HOME = home;
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      await fn();
+    } finally {
+      log.mockRestore();
+      process.env.BOOT_HOME = previousHome;
+    }
+  }
+
+  beforeAll(async () => {
+    root = await fs.mkdtemp(path.join(os.tmpdir(), "boot-agent-published-"));
+    mapRemote = path.join(root, "map.git");
+    bare(mapRemote);
+    authorHome = path.join(root, "author-home");
+    agentHome = path.join(root, "agent-home");
+    authorWorkspace = path.join(root, "author-workspace");
+    agentWorkspace = path.join(root, "agent-workspace");
+
+    const apiRemote = await makeRepo(
+      root,
+      path.join(authorWorkspace, "services", "api"),
+      "published-api",
+    );
+    const docsRemote = await makeRepo(
+      root,
+      path.join(authorWorkspace, "docs"),
+      "published-docs",
+    );
+    await fs.writeFile(
+      path.join(authorWorkspace, CONFIG_FILE_NAME),
+      stringifyYaml({
+        schemaVersion: 1,
+        workspace: { id: "acme/published", name: "Published" },
+        repositories: {
+          api: { url: apiRemote, path: "services/api" },
+          docs: { url: docsRemote, path: "docs" },
+        },
+        commands: {
+          setup: `node -e "require('fs').writeFileSync('setup-ran.txt', 'yes')"`,
+        },
+        profiles: {
+          local: { repositories: "all", hydrate: "manual" },
+          agent: {
+            repositories: ["api"],
+            commands: ["setup"],
+            hydrate: "eager",
+          },
+        },
+        defaults: { profile: "local" },
+      }),
+    );
+    await asMachine(authorHome, () => linkCommand(mapRemote, authorWorkspace));
+  });
+
+  afterAll(async () => {
+    process.env.BOOT_HOME = previousHome;
+    await fs.rm(root, { recursive: true, force: true });
+  });
+
+  it("realizes only the selected profile and remains idempotent", async () => {
+    await asMachine(agentHome, () => agentCommand(mapRemote, agentWorkspace));
+
+    expect(isGitRepo(path.join(agentWorkspace, "services", "api"))).toBe(true);
+    await expect(fs.stat(path.join(agentWorkspace, "docs"))).rejects.toBeTruthy();
+    await expect(fs.stat(path.join(agentWorkspace, "setup-ran.txt"))).rejects.toBeTruthy();
+
+    await expect(
+      asMachine(agentHome, () => agentCommand(mapRemote, agentWorkspace)),
+    ).resolves.toBeUndefined();
+  });
+
+  it("runs declared setup only when explicitly requested", async () => {
+    await asMachine(agentHome, () =>
+      agentCommand(mapRemote, agentWorkspace, { runSetup: true }),
+    );
+    await expect(
+      fs.readFile(path.join(agentWorkspace, "setup-ran.txt"), "utf8"),
+    ).resolves.toBe("yes");
   });
 });

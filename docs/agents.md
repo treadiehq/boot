@@ -69,12 +69,32 @@ At the beginning of a task, run `boot inspect --json`.
 When the workspace has been published through a workspace map:
 
 ```bash
-boot agent git@github.com:acme/billing-map.git /workspace
-boot inspect /workspace --json
+boot agent git@github.com:acme/billing-map.git /workspace \
+  --profile agent --run-setup --json
 ```
 
-`boot agent` remains a compatibility bootstrap. It delegates to the published
-`agent` profile when present.
+`boot agent` is the one-shot bootstrap contract for CI, cloud VMs, and fresh
+containers. On the first run it links the published map; later runs pull and
+reapply it safely. It uses the published `agent` profile by default when one
+exists, or accepts another profile with `--profile`.
 
-Automation should check the exit status of `boot up`. Partial repository,
-service, tool, setup, or environment failures produce a nonzero exit.
+The JSON result includes:
+
+- source kind and whether it was linked, updated, cached, or previewed;
+- the resolved workspace, profile, and provider;
+- repository actions and states;
+- required and observed tool/service status;
+- environment names and availability, never values;
+- selected commands, constraints, blockers, applied actions, and failures.
+
+Use `--dry-run --json` to preview without changing the target. Environment
+materialization is enabled for a published workspace unless `--no-env` is
+passed. Required Boot-managed values make readiness fail when the machine has
+no matching secret key. Setup commands execute only with `--run-setup`.
+
+The older `--hydrate`, `--all`, and `--eager` map flags remain available for
+maps that do not yet publish `boot.yaml`.
+
+Automation should check the exit status of `boot agent` or `boot up`. Partial
+repository, service, tool, setup, or environment failures produce a nonzero
+exit.

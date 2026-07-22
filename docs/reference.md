@@ -20,6 +20,25 @@ Options:
 - `--no-env` avoids writing plaintext `.env` files;
 - `--run-setup` explicitly executes setup commands.
 
+`boot agent <map-remote> [path]`
+
+Acquires a published workspace map and prepares a fresh CI or cloud-agent
+workspace in one idempotent invocation. A published `agent` profile is selected
+by default when present.
+
+Options:
+
+- `--profile <name>` selects another published profile;
+- `--provider local` selects the workspace provider;
+- `--run-setup` explicitly executes selected setup commands;
+- `--no-env` validates encrypted values without writing `.env` files;
+- `--folder` treats the source as an already-synchronized folder;
+- `--dry-run` previews without changing the requested workspace;
+- `--json` writes one versioned result only to stdout.
+
+The compatibility flags `--hydrate`, `--all`, `--eager`, and `--env` remain
+available for maps that do not yet publish `boot.yaml`.
+
 `boot inspect [path]`
 
 Inspects resolved context and current state. `--profile`, `--provider`, and
@@ -52,20 +71,30 @@ Actions are `none`, `clone`, `placeholder`, `hydrate`, `update-placeholder`,
 
 Requirement states are `available`, `missing`, `mismatch`, or `unsupported`.
 
+## `boot agent --json`
+
+The top-level bootstrap result contains:
+
+- `schemaVersion`, `mode`, `source`, `dryRun`, and `ready`;
+- `diagnostics`, using the same secret-free workspace shape as
+  `boot inspect --json`;
+- `applied`, `failures`, and `warnings`.
+
+Compatibility-map results replace `diagnostics` with repository
+`reconciliation`, `hydration`, and `environmentFiles` summaries. Neither shape
+contains the map URL, URL credentials, secret keys, or environment values.
+Readiness failures are printed as JSON before the command exits nonzero.
+
 ## Compatibility commands
 
 Existing synchronization and lazy-cloning commands remain available:
 
 - `setup`, `link`, `push`, and `pull`;
-- `agent`;
 - `export`/`scan` and `import`/`restore`;
 - `hydrate`, `enter`, `cd`, `shell-hook`, `watch`, `mount`, and `unmount`;
 - `status` and `doctor`;
 - encrypted `env` and key commands;
 - `daemon` commands.
-
-When a published workspace definition exists, `agent` selects its `agent`
-profile unless compatibility hydration override flags are supplied.
 
 Run `boot <command> --help` for command-specific examples and options.
 

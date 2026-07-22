@@ -41,6 +41,28 @@ tools, services, and environment variables.
 `boot inspect --json` gives the agent a clear summary of the workspace without
 including secret values.
 
+## Start a fresh cloud agent
+
+Publish the reviewed workspace definition once:
+
+```bash
+boot link git@github.com:acme/billing-map.git ~/code
+boot save ~/code
+```
+
+Then prepare any fresh VM, container, or CI runner with one Boot command:
+
+```bash
+boot agent git@github.com:acme/billing-map.git /workspace \
+  --profile agent --run-setup --json
+```
+
+The command is provider-neutral and safe to rerun. It acquires the workspace
+map, realizes only the selected profile, materializes available encrypted
+environment values, optionally runs declared setup commands, and returns
+secret-free readiness diagnostics. A machine that needs Boot-managed secrets
+must have the workspace key provisioned before bootstrap.
+
 ## What Boot handles
 
 - One repository or many
@@ -48,6 +70,7 @@ including secret values.
 - Project commands and constraints
 - Required tools, services, and environment variables
 - Different setups for local work, coding agents, CI, and review
+- One-command, profile-scoped setup on fresh cloud machines
 
 Boot prepares repositories and checks requirements. It does not replace Git,
 install tools, or start services.

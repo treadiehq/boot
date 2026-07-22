@@ -71,3 +71,23 @@ boot up ~/code --profile local
 ```
 
 The `local` profile can select the full workspace.
+
+For a fresh CI runner or cloud agent, the link-or-pull and realization steps
+are one idempotent command:
+
+```bash
+boot agent git@github.com:me/code-map.git /workspace --profile agent
+```
+
+Add `--run-setup` when the selected setup commands should execute, and `--json`
+when an agent needs one versioned, secret-free result on stdout:
+
+```bash
+boot agent git@github.com:me/code-map.git /workspace \
+  --profile agent --run-setup --json
+```
+
+The profile is resolved before repositories are created, so excluded
+repositories are not cloned or represented by new placeholders. Tools and
+services are verified, not installed or started. Missing selected requirements
+produce diagnostics and a nonzero exit.

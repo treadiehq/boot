@@ -7,12 +7,17 @@ import { readPlaceholder } from "../core/placeholder";
 import { resolveWorkspace, workspaceDefinitionSchema } from "../core/workspace";
 
 let root: string;
+let previousBootHome: string | undefined;
 
 beforeEach(async () => {
   root = await fs.mkdtemp(path.join(os.tmpdir(), "boot-provider-"));
+  previousBootHome = process.env.BOOT_HOME;
+  process.env.BOOT_HOME = path.join(root, "boot-home");
 });
 
 afterEach(async () => {
+  if (previousBootHome === undefined) delete process.env.BOOT_HOME;
+  else process.env.BOOT_HOME = previousBootHome;
   await fs.rm(root, { recursive: true, force: true });
 });
 
@@ -73,5 +78,108 @@ describe("LocalWorkspaceProvider", () => {
     await expect(fs.readFile(path.join(root, "apps", "web", "notes.txt"), "utf8")).resolves.toBe(
       "keep me",
     );
+  });
+
+  it("treats a selected Boot secret without a local key as a readiness blocker", async () => {
+    const resolved = resolveWorkspace(
+      workspaceDefinitionSchema.parse({
+        schemaVersion: 1,
+        workspace: { id: "billing", name: "Billing" },
+        repositories: {},
+        env: {
+          required: [{ name: "BILLING_API_KEY", source: "boot", secret: true }],
+        },
+        profiles: { agent: { env: ["BILLING_API_KEY"] } },
+      }),
+      "agent",
+    );
+
+    const plan = await new LocalWorkspaceProvider().plan(root, resolved);
+
+    expect(plan.ready).toBe(false);
+    expect(plan.environment).toEqual([
+      expect.objectContaining({
+        name: "BILLING_API_KEY",
+        available: false,
+      }),
+    ]);
+    expect(plan.blockers).toContain(
+      '"BILLING_API_KEY": required environment variable is not available',
+    );
+  });
+
+  it("keeps unsupported selected tools as readiness blockers", async () => {
+    const resolved = resolveWorkspace(
+      workspaceDefinitionSchema.parse({
+        schemaVersion: 1,
+        workspace: { id: "billing", name: "Billing" },
+        repositories: {},
+        tools: { "acme-runtime": "3" },
+        profiles: { agent: { tools: ["acme-runtime"] } },
+      }),
+      "agent",
+    );
+
+    const plan = await new LocalWorkspaceProvider().plan(root, resolved);
+
+    expect(plan.ready).toBe(false);
+    expect(plan.tools).toEqual([
+      expect.objectContaining({
+        name: "acme-runtime",
+        state: "unsupported",
+      }),
+    ]);
+    expect(plan.blockers[0]).toMatch(/acme-runtime.*automatic checks are not available/);
+  });
+
+  it("runs selected setup commands only when explicitly requested", async () => {
+    const resolved = resolveWorkspace(
+      workspaceDefinitionSchema.parse({
+        schemaVersion: 1,
+        workspace: { id: "billing", name: "Billing" },
+        repositories: {},
+        commands: {
+          setup: `node -e "require('fs').writeFileSync('setup-ran.txt', 'yes')"`,
+        },
+        profiles: { agent: { commands: ["setup"] } },
+      }),
+      "agent",
+    );
+    const provider = new LocalWorkspaceProvider();
+    const plan = await provider.plan(root, resolved);
+
+    const withoutSetup = await provider.apply(root, resolved, plan);
+    await expect(fs.stat(path.join(root, "setup-ran.txt"))).rejects.toBeTruthy();
+    expect(withoutSetup.applied).not.toContainEqual({
+      kind: "command",
+      name: "setup",
+    });
+
+    const withSetup = await provider.apply(root, resolved, plan, { runSetup: true });
+    await expect(fs.readFile(path.join(root, "setup-ran.txt"), "utf8")).resolves.toBe("yes");
+    expect(withSetup.applied).toContainEqual({ kind: "command", name: "setup" });
+    expect(withSetup.ready).toBe(true);
+  });
+
+  it("returns a non-ready result when a setup command fails", async () => {
+    const resolved = resolveWorkspace(
+      workspaceDefinitionSchema.parse({
+        schemaVersion: 1,
+        workspace: { id: "billing", name: "Billing" },
+        repositories: {},
+        commands: { setup: `node -e "process.exit(3)"` },
+      }),
+    );
+    const provider = new LocalWorkspaceProvider();
+    const plan = await provider.plan(root, resolved);
+
+    const result = await provider.apply(root, resolved, plan, { runSetup: true });
+
+    expect(result.ready).toBe(false);
+    expect(result.failures).toContainEqual({
+      kind: "command",
+      name: "setup",
+      message: "exited with status 3",
+    });
   });
 });

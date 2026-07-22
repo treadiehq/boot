@@ -177,7 +177,7 @@ From source, the same thing looks like `pnpm dev export ~/code`,
 
 ## Compatibility commands
 
-Map workflows use `setup`, `link`, `push`, `pull`, `daemon`, `agent`, and `env`.
+Map compatibility workflows use `setup`, `link`, `push`, `pull`, `daemon`, and `env`.
 Snapshot workflows use `export`, `list`, and `import`. `export` and `import`
 used to be called `scan` and `restore`; those aliases still work.
 
@@ -196,7 +196,6 @@ used to be called `scan` and `restore`; those aliases still work.
 | `watch [workspacePath]` | Clone a placeholder when a tool writes into it. |
 | `mount <workspacePath> <mountpoint>` | Open a workspace through a mount that clones repos on first read. Needs FUSE. |
 | `unmount <mountpoint>` | Force-unmount a workspace mounted with `mount`. |
-| `agent <remote> [workspacePath]` | Set up a CI job or cloud agent from a workspace map. |
 | `env set\|import\|list\|rm\|materialize` | Store encrypted environment values in the workspace map. Use `--repo <relativePath>` for one repo. |
 | `env init` | Create this machine's secret key for environment values. |
 | `env key share\|receive` | Move the secret key to a new machine with a passphrase. |
@@ -570,22 +569,27 @@ cat secret.key | boot env key import   # or pipe it in
 
 ## Cloud agents and CI — `boot agent`
 
-`boot agent` prepares a CI job or cloud agent from a workspace map. Repeated
-runs are idempotent:
+`boot agent` acquires a published workspace map and realizes its selected
+profile. Repeated runs are idempotent:
 
 ```bash
-boot agent git@github.com:me/my-code-map.git ~/code           # link (or pull) → placeholders
-boot agent git@github.com:me/my-code-map.git ~/code --eager   # clone everything up front
-boot agent … --hydrate 'apps/*' 'libs/api'                    # clone only what you need
-boot agent … --all --env                                      # clone everything + write .env files
-boot agent … --all --dry-run                                  # preview the plan, write nothing
+boot agent git@github.com:me/my-code-map.git ~/code --profile agent
+boot agent … --profile review --run-setup
+boot agent … --profile agent --dry-run --json
+boot agent … --profile agent --no-env
 ```
 
-- First run **links** the workspace map. Later runs **pull** and re-apply it.
-- `--hydrate <patterns…>` clones only matching placeholders, so an agent pulls
-  just the repos it needs.
-- `--env` writes env files when the secret key is present, and skips with a hint
-  when it is not.
+- The first run **links** the workspace map. Later runs **pull** and re-apply it.
+- Profile repository selection and `hydrate` policy determine what is cloned;
+  excluded repositories are not prepared.
+- Encrypted selected values are materialized by default. `--no-env` checks
+  readiness without writing files, and a missing required key is a blocker.
+- Setup commands run only with `--run-setup`.
+- `--json` returns the same secret-free diagnostics as inspection plus applied
+  actions and failures.
+
+Maps without a published `boot.yaml` retain the older `--hydrate <patterns…>`,
+`--all`, `--eager`, and `--env` compatibility behavior.
 
 ## Snapshot file shape
 

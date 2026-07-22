@@ -32,7 +32,19 @@ boot save ~/billing
 The workspace map contains shared Boot metadata and encrypted environment data.
 AES-256-GCM protects the environment data and detects ciphertext tampering, but
 it does not make the map safe to publish anywhere. Keep the map private and
-control access to it. Another environment can link the map and run `boot up`.
+control access to it.
+
+A fresh cloud environment can acquire the map and realize its selected profile
+in one idempotent command:
+
+```bash
+boot agent git@github.com:acme/billing-map.git /workspace \
+  --profile agent --run-setup --json
+```
+
+Provision the Boot secret key through the environment's secret-management
+channel when the profile requires encrypted values. The key is never included
+in the map or returned by JSON diagnostics.
 
 ## Publishing in source control
 

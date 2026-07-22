@@ -1,133 +1,113 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import path from "node:path";
 
-const pullMock = vi.hoisted(() => vi.fn());
+const bootstrapMock = vi.hoisted(() => vi.fn());
+const outputMock = vi.hoisted(() => vi.fn());
 
-vi.mock("../core/git", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../core/git")>();
-  return { ...actual, ensureGitAvailable: vi.fn() };
-});
-vi.mock("../core/map", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../core/map")>();
-  return { ...actual, isLinked: vi.fn(), readWorkspaceMap: vi.fn() };
-});
-vi.mock("../core/reconcile", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../core/reconcile")>();
-  return { ...actual, reconcileFromMap: vi.fn() };
-});
-vi.mock("../core/lock", () => ({
-  withWorkspaceMapLock: vi.fn(async (_root: string, action: () => Promise<unknown>) => action()),
+vi.mock("../core/git", () => ({ ensureGitAvailable: vi.fn() }));
+vi.mock("../core/bootstrap", () => ({
+  bootstrapAgentWorkspace: bootstrapMock,
+  bootstrapOutput: outputMock,
 }));
-vi.mock("../core/transport", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../core/transport")>();
-  return { ...actual, loadTransport: vi.fn(async () => ({ pull: pullMock })) };
-});
-vi.mock("../core/workspaceStore", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../core/workspaceStore")>();
-  return { ...actual, readPublishedWorkspace: vi.fn() };
-});
-vi.mock("../commands/up", () => ({ upCommand: vi.fn() }));
 
 import { agentCommand } from "../commands/agent";
-import { upCommand } from "../commands/up";
-import { ensureGitAvailable } from "../core/git";
-import { emptyWorkspaceMap, isLinked, readWorkspaceMap } from "../core/map";
-import { reconcileFromMap } from "../core/reconcile";
-import { workspaceDefinitionSchema } from "../core/workspace";
-import { readPublishedWorkspace } from "../core/workspaceStore";
 
-const ensureGitMock = vi.mocked(ensureGitAvailable);
-const isLinkedMock = vi.mocked(isLinked);
-const readMapMock = vi.mocked(readWorkspaceMap);
-const reconcileMock = vi.mocked(reconcileFromMap);
-const readPublishedMock = vi.mocked(readPublishedWorkspace);
-const upMock = vi.mocked(upCommand);
-
-const published = workspaceDefinitionSchema.parse({
-  schemaVersion: 1,
-  workspace: { id: "test/workspace", name: "test" },
-  repositories: {
-    api: { path: "api" },
-    docs: { path: "docs" },
-  },
-  profiles: {
-    agent: {
-      repositories: ["api"],
-      hydrate: "eager",
-    },
-  },
-});
-
-describe("agentCommand dry run", () => {
-  beforeEach(() => {
-    ensureGitMock.mockReset().mockResolvedValue(undefined);
-    isLinkedMock.mockReset().mockReturnValue(true);
-    readMapMock.mockReset().mockResolvedValue(emptyWorkspaceMap("test"));
-    reconcileMock.mockReset().mockResolvedValue({
+function compatibilityResult(overrides: Record<string, unknown> = {}) {
+  return {
+    schemaVersion: 1,
+    mode: "compatibility",
+    root: "/workspace",
+    source: { kind: "git", state: "preview" },
+    dryRun: true,
+    reconciliation: {
       placeholders: 1,
       cloned: 0,
       skipped: 0,
       plan: [{ relativePath: "docs", action: "placeholder" }],
       failures: [],
+    },
+    hydration: { planned: [], completed: [] },
+    environmentFiles: 0,
+    failures: [],
+    warnings: [],
+    ready: false,
+    ...overrides,
+  };
+}
+
+describe("agentCommand", () => {
+  const lines: string[] = [];
+
+  beforeEach(() => {
+    lines.length = 0;
+    bootstrapMock.mockReset();
+    outputMock.mockReset().mockReturnValue({ schemaVersion: 1, ready: false });
+    vi.spyOn(console, "log").mockImplementation((message?: unknown) => {
+      lines.push(String(message ?? ""));
     });
-    readPublishedMock.mockReset().mockResolvedValue(published);
-    upMock.mockReset().mockResolvedValue(undefined);
-    pullMock.mockReset().mockResolvedValue(undefined);
-    vi.spyOn(console, "log").mockImplementation(() => {});
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it("previews legacy reconciliation before the published agent profile", async () => {
-    const root = path.resolve("/workspace");
+  it("emits one JSON document and does not fail a dry run", async () => {
+    bootstrapMock.mockResolvedValue(compatibilityResult());
 
-    await agentCommand("git@example.com:map.git", root, { dryRun: true });
+    await expect(
+      agentCommand("git@example.com:map.git", "/workspace", {
+        dryRun: true,
+        json: true,
+      }),
+    ).resolves.toBeUndefined();
 
-    expect(reconcileMock).toHaveBeenCalledWith(root, [], {
-      eager: undefined,
-      dryRun: true,
-    });
-    expect(upMock).toHaveBeenCalledWith(root, {
-      profile: "agent",
+    expect(lines).toEqual([JSON.stringify({ schemaVersion: 1, ready: false }, null, 2)]);
+    expect(outputMock).toHaveBeenCalledOnce();
+  });
+
+  it("forwards the canonical profile, provider, setup, and env policy", async () => {
+    bootstrapMock.mockResolvedValue(
+      compatibilityResult({ ready: true, dryRun: false }),
+    );
+
+    await agentCommand("git@example.com:map.git", "/workspace", {
+      profile: "review",
       provider: "local",
-      env: undefined,
-      dryRun: true,
+      runSetup: true,
+      env: false,
+      json: true,
     });
-    expect(reconcileMock.mock.invocationCallOrder[0]).toBeLessThan(
-      upMock.mock.invocationCallOrder[0]!,
+
+    expect(bootstrapMock).toHaveBeenCalledWith(
+      "git@example.com:map.git",
+      "/workspace",
+      expect.objectContaining({
+        profile: "review",
+        provider: "local",
+        runSetup: true,
+        env: false,
+      }),
     );
   });
 
-  it("keeps legacy override flags on the legacy dry-run path", async () => {
-    await agentCommand("git@example.com:map.git", "/workspace", {
-      dryRun: true,
-      eager: true,
-    });
-
-    expect(reconcileMock).toHaveBeenCalledWith(path.resolve("/workspace"), [], {
-      eager: true,
-      dryRun: true,
-    });
-    expect(upMock).not.toHaveBeenCalled();
-  });
-
-  it("fails an eager run after pulling when cloning falls back to a placeholder", async () => {
-    reconcileMock.mockResolvedValue({
-      placeholders: 1,
-      cloned: 0,
-      skipped: 0,
-      plan: [{ relativePath: "api", action: "clone" }],
-      failures: [{ relativePath: "api", message: "authentication failed" }],
-    });
+  it("prints structured diagnostics before returning a failing exit", async () => {
+    bootstrapMock.mockResolvedValue(
+      compatibilityResult({
+        dryRun: false,
+        failures: [
+          {
+            kind: "repository",
+            name: "api",
+            message: "authentication failed",
+          },
+        ],
+      }),
+    );
 
     await expect(
-      agentCommand("git@example.com:map.git", "/workspace", { eager: true }),
-    ).rejects.toThrow(/agent workspace is not ready.*could not be cloned/i);
+      agentCommand("git@example.com:map.git", "/workspace", { json: true }),
+    ).rejects.toThrow(/agent workspace is not ready: 1 problem/i);
 
-    expect(pullMock).toHaveBeenCalledOnce();
-    expect(readPublishedMock).not.toHaveBeenCalled();
-    expect(upMock).not.toHaveBeenCalled();
+    expect(lines).toHaveLength(1);
+    expect(outputMock).toHaveBeenCalledOnce();
   });
 });

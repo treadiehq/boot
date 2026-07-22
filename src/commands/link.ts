@@ -18,14 +18,13 @@ import {
   readWorkspaceMap,
   sharedRepoFromEntry,
   shortId,
-  writeLinkConfig,
   writeMachineState,
   writeWorkspaceMap,
 } from "../core/map";
 import { reconcileFromMap } from "../core/reconcile";
 import { scanWorkspace } from "../core/scanner";
-import { cloneMap, initFolderMap, type MapTransport } from "../core/transport";
 import { writePublishedWorkspace } from "../core/workspaceStore";
+import { initializeWorkspaceSource } from "../core/workspaceSource";
 import { colors, logger } from "../ui/logger";
 import { renderReconcileFailures, reconcileProgressHooks } from "../ui/plan";
 import { withSpinner } from "../ui/progress";
@@ -119,7 +118,6 @@ export async function linkCommand(
     );
   }
 
-  const kind = options.folder ? "folder" : "git";
   logger.heading(
     `Linking ${colors.cyan(root)} to ${colors.cyan(remote)}${
       options.folder ? colors.dim(" (folder)") : ""
@@ -131,25 +129,12 @@ export async function linkCommand(
   }
 
   const identity = await loadMachineIdentity();
-  await fs.mkdir(paths.bootDir, { recursive: true });
-
-  const transport: MapTransport = options.folder
-    ? await withSpinner("syncing workspace map from folder", () =>
-        initFolderMap(remote, paths.mapDir),
-      )
-    : await withSpinner("cloning workspace map", () => cloneMap(remote, paths.mapDir));
-
-  let map = emptyWorkspaceMap(path.basename(root));
-  try {
-    map = (await readWorkspaceMap(paths.mapDir)) ?? map;
-  } catch (error) {
-    // Transport initialization succeeded, so this command created mapDir.
-    // Roll it back when the imported map is invalid so a corrected retry can
-    // initialize cleanly instead of being mistaken for an existing link.
-    await fs.rm(paths.mapDir, { recursive: true, force: true });
-    throw error;
-  }
-  await writeLinkConfig(root, { kind, remote, linkedAt: new Date().toISOString() });
+  const source = await withSpinner(
+    options.folder ? "syncing workspace map from folder" : "cloning workspace map",
+    () => initializeWorkspaceSource(remote, root, { folder: options.folder }),
+  );
+  const transport = source.transport!;
+  let map = (await readWorkspaceMap(paths.mapDir)) ?? emptyWorkspaceMap(path.basename(root));
 
   // Publish what this machine already has into the shared map.
   const scan = await scanWorkspace(root);

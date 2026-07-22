@@ -46,6 +46,9 @@ describe("CLI help", () => {
     );
     expect(help).toContain("Primary workspace commands:");
     expect(help).toContain("Compatibility sync commands:");
+    expect(help.indexOf("agent <remote>")).toBeLessThan(
+      help.indexOf("Other commands:"),
+    );
   });
 
   it("includes a command-specific example for every executable leaf command", () => {
@@ -92,7 +95,7 @@ describe("CLI help", () => {
   it("states JSON-only stdout and foreground behavior", () => {
     const program = buildProgram();
 
-    for (const path of ["up", "inspect", "cd"]) {
+    for (const path of ["up", "inspect", "agent", "cd"]) {
       const json = findCommand(program, path).options.find((option) => option.long === "--json");
       expect(json?.description, path).toMatch(/JSON.*only.*stdout/);
     }
