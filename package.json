@@ -1,6 +1,6 @@
 {
   "name": "boot",
-  "version": "0.2.9",
+  "version": "0.3.0",
   "description": "Your workspace, wherever you work.",
   "type": "module",
   "bin": {
