@@ -53,6 +53,44 @@ describe("discoverWorkspace", () => {
     });
   });
 
+  it("preserves same-named services from multiple repositories", async () => {
+    const api = path.join(root, "apps", "api");
+    await fs.writeFile(
+      path.join(api, "compose.yaml"),
+      "services:\n  database:\n    image: postgres:16\n",
+    );
+    const web = path.join(root, "apps", "web");
+    await fs.mkdir(path.join(web, ".git"), { recursive: true });
+    await fs.writeFile(
+      path.join(web, "compose.yaml"),
+      "services:\n  database:\n    image: redis:7\n",
+    );
+
+    const discovery = await discoverWorkspace(root);
+
+    expect(discovery.services).toBe(3);
+    expect(discovery.definition.services).toEqual({
+      database: { type: "postgres", version: "17" },
+      "api-database": { type: "postgres", version: "16" },
+      "web-database": { type: "redis", version: "7" },
+    });
+  });
+
+  it("preserves root and repository services with the same name", async () => {
+    await fs.writeFile(
+      path.join(root, "apps", "api", "compose.yaml"),
+      "services:\n  database:\n    image: redis:7\n",
+    );
+
+    const discovery = await discoverWorkspace(root);
+
+    expect(discovery.services).toBe(2);
+    expect(discovery.definition.services).toEqual({
+      database: { type: "postgres", version: "17" },
+      "api-database": { type: "redis", version: "7" },
+    });
+  });
+
   it("distinguishes registry ports from image tags", async () => {
     await fs.writeFile(
       path.join(root, "compose.yaml"),

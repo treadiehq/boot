@@ -166,6 +166,43 @@ describe("hydrateCommand", () => {
     expect(cloneMock).not.toHaveBeenCalled();
   });
 
+  it("reports merge collisions without claiming the repository download failed", async () => {
+    const repoDir = await makePlaceholder(
+      "apps/collision",
+      "git@example.com:collision.git",
+    );
+    await fs.writeFile(path.join(repoDir, "config.json"), '{"source":"placeholder"}\n');
+    cloneMock.mockImplementation(async (_url: string, target: string) => {
+      await fs.mkdir(path.join(target, ".git"), { recursive: true });
+      await fs.writeFile(path.join(target, "config.json"), '{"source":"repository"}\n');
+    });
+
+    let thrown: Error | null = null;
+    try {
+      await hydratePlaceholder(repoDir);
+    } catch (error) {
+      thrown = error as Error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    expect(thrown?.message).toContain(
+      "The repository was downloaded, but Boot could not preserve the existing placeholder files",
+    );
+    expect(thrown?.message).toContain(
+      'Could not preserve "config.json" because the downloaded repository contains the same path.',
+    );
+    expect(thrown?.message).not.toContain("Could not download the repository");
+    expect(await fs.readFile(path.join(repoDir, "config.json"), "utf8")).toBe(
+      '{"source":"placeholder"}\n',
+    );
+    expect((await readPlaceholder(repoDir))?.hydrateStatus).toBe("placeholder");
+    expect(
+      (await fs.readdir(path.dirname(repoDir))).filter((name) =>
+        name.startsWith(".collision.boot-stage-"),
+      ),
+    ).toEqual([]);
+  });
+
   it("leaves the placeholder intact when cloning fails", async () => {
     const repoDir = await makePlaceholder("apps/flaky", "git@example.com:flaky.git");
     cloneMock.mockRejectedValue(new Error("network down"));

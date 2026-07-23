@@ -10,7 +10,11 @@ import {
 import { existsSync } from "node:fs";
 import { syncOnce, type SyncOptions } from "../core/engine";
 import { isLinked } from "../core/map";
-import { detectServicePlatform, serviceFilePath } from "../core/service";
+import {
+  detectServicePlatform,
+  serviceFilePath,
+  validateDaemonInterval,
+} from "../core/service";
 import { colors, logger } from "../ui/logger";
 
 export interface DaemonStartOptions extends SyncOptions {
@@ -138,10 +142,9 @@ export async function daemonStart(
   }
 
   const config = await loadConfig(root);
-  const intervalSeconds = options.interval ?? config.daemonIntervalSeconds;
-  if (!Number.isInteger(intervalSeconds) || intervalSeconds <= 0) {
-    throw new Error("Daemon interval must be a positive whole number of seconds.");
-  }
+  const intervalSeconds = validateDaemonInterval(
+    options.interval ?? config.daemonIntervalSeconds,
+  );
   const syncOptions: SyncOptions = {
     eager: options.eager,
     fetch: options.fetch,

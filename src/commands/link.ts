@@ -21,6 +21,7 @@ import {
   writeMachineState,
   writeWorkspaceMap,
 } from "../core/map";
+import { resolveWithinRoot } from "../core/pathUtils";
 import { reconcileFromMap } from "../core/reconcile";
 import { scanWorkspace } from "../core/scanner";
 import { writePublishedWorkspace } from "../core/workspaceStore";
@@ -174,10 +175,13 @@ export async function linkCommand(
   await transport.push(`link: ${identity.hostname} (${shortId(identity.machineId)})`);
 
   if (recon.failures.length > 0) {
+    const retryPath = resolveWithinRoot(root, recon.failures[0]!.relativePath);
     throw new Error(
       `The workspace was linked, but ${recon.failures.length} ${
         recon.failures.length === 1 ? "repository" : "repositories"
-      } could not be cloned. Fix the reported problems, then run: boot pull ${commandArg(root)} --eager`,
+      } could not be cloned. Placeholders were prepared instead. Fix the reported ${
+        recon.failures.length === 1 ? "problem" : "problems"
+      }, then run: boot hydrate ${commandArg(retryPath)}`,
     );
   }
 

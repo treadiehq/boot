@@ -14,6 +14,7 @@ import {
   serviceFilePath,
   serviceName,
   uninstallCommands,
+  validateDaemonInterval,
   type ServiceCommand,
   type ServicePlatform,
 } from "../core/service";
@@ -109,7 +110,9 @@ export async function daemonInstall(
 
   const home = options.home ?? os.homedir();
   const config = await loadConfig(root);
-  const intervalSeconds = options.intervalSeconds ?? config.daemonIntervalSeconds;
+  const intervalSeconds = validateDaemonInterval(
+    options.intervalSeconds ?? config.daemonIntervalSeconds,
+  );
   // A standalone binary is its own launcher (no script arg); a source install
   // runs `node <entry>`.
   const entry = options.entry ?? (isStandaloneBinary() ? "" : resolveEntry());

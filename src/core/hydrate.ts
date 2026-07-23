@@ -46,6 +46,20 @@ async function mergePlaceholderFiles(repoDir: string, clonePath: string): Promis
   }
 }
 
+async function failStagedHydration(
+  stageRoot: string,
+  summary: string,
+  error: unknown,
+): Promise<never> {
+  await fs.rm(stageRoot, { recursive: true, force: true });
+  const reason = sanitizeUserText((error as Error).message);
+  throw new Error(
+    summary +
+      (reason ? ` ${reason}` : "") +
+      " Fix the reported problem, then retry.",
+  );
+}
+
 /**
  * Clone a placeholder's real repo into its folder, in place. The cloned content
  * is moved in around the preserved `.boot/` metadata, the recorded branch is
@@ -93,14 +107,21 @@ export async function hydratePlaceholder(
 
       try {
         await cloneRepo(meta.remoteUrl, clonePath);
+      } catch (error) {
+        return failStagedHydration(
+          stageRoot,
+          "Could not download the repository; the existing folder was left unchanged.",
+          error,
+        );
+      }
+
+      try {
         await mergePlaceholderFiles(repoDir, clonePath);
-      } catch (err) {
-        await fs.rm(stageRoot, { recursive: true, force: true });
-        const reason = sanitizeUserText((err as Error).message);
-        throw new Error(
-          "Could not download the repository; the existing folder was left unchanged." +
-            (reason ? ` ${reason}` : "") +
-            " Fix the reported problem, then retry.",
+      } catch (error) {
+        return failStagedHydration(
+          stageRoot,
+          "The repository was downloaded, but Boot could not preserve the existing placeholder files; the existing folder was left unchanged.",
+          error,
         );
       }
 

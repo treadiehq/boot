@@ -92,6 +92,44 @@ describe("CLI help", () => {
     expect(output).toContain("Examples:");
   });
 
+  it.each(["abc", "", " ", "60s", "60.5", "0", "-30"])(
+    "rejects invalid daemon interval %j before running a command",
+    async (interval) => {
+      const errors: string[] = [];
+      const program = buildProgram();
+      for (const command of allCommands(program)) {
+        command
+          .exitOverride()
+          .configureOutput({ writeErr: (text) => errors.push(text) });
+      }
+
+      await expect(
+        program.parseAsync(["node", "boot", "daemon", "install", "--interval", interval]),
+      ).rejects.toMatchObject({ code: "commander.invalidArgument" });
+
+      expect(errors.join("")).toContain(
+        "Daemon interval must be a positive whole number of seconds.",
+      );
+    },
+  );
+
+  it("uses strict interval parsing for every daemon installation path", async () => {
+    for (const args of [
+      ["setup", "--interval", "invalid"],
+      ["daemon", "start", "--interval", "invalid"],
+      ["daemon", "install", "--interval", "invalid"],
+    ]) {
+      const program = buildProgram();
+      for (const command of allCommands(program)) {
+        command.exitOverride().configureOutput({ writeErr: () => undefined });
+      }
+
+      await expect(
+        program.parseAsync(["node", "boot", ...args]),
+      ).rejects.toMatchObject({ code: "commander.invalidArgument" });
+    }
+  });
+
   it("states JSON-only stdout and foreground behavior", () => {
     const program = buildProgram();
 

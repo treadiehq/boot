@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { Command, Help } from "commander";
+import { Command, Help, InvalidArgumentError } from "commander";
 import {
   daemonStart,
   daemonStatus,
@@ -41,6 +41,7 @@ import { statusCommand } from "./commands/status";
 import { updateCommand, type UpdateOptions } from "./commands/update";
 import { upCommand, type UpOptions } from "./commands/up";
 import { watchCommand } from "./commands/watch";
+import { validateDaemonInterval } from "./core/service";
 import { logger } from "./ui/logger";
 
 export const DEFAULT_MANIFEST_NAME = "boot-workspace.json";
@@ -66,6 +67,14 @@ function resolveVersion(): string {
 }
 
 const VERSION = resolveVersion();
+
+function parseDaemonInterval(value: string): number {
+  try {
+    return validateDaemonInterval(Number(value));
+  } catch (error) {
+    throw new InvalidArgumentError((error as Error).message);
+  }
+}
 
 export function buildProgram(): Command {
   const program = new Command();
@@ -329,7 +338,7 @@ export function buildProgram(): Command {
     .option("--no-key", "do not set up a secret key")
     .option("--import-key <base64>", "install an exported secret key")
     .option("--shell <shell>", "shell to configure; omit to detect it")
-    .option("--interval <seconds>", "seconds between syncs", (v) => Number.parseInt(v, 10))
+    .option("--interval <seconds>", "seconds between syncs", parseDaemonInterval)
     .option("--mount <mountpoint>", "mount path to include in the summary")
     .action((remote: string | undefined, workspacePath: string, options: SetupOptions) =>
       setupCommand(remote, workspacePath, options),
@@ -515,7 +524,7 @@ export function buildProgram(): Command {
     .description("sync a workspace in the foreground until stopped")
     .argument("[workspacePath]", "workspace to sync", ".")
     .option("--once", "sync once and exit", false)
-    .option("--interval <seconds>", "seconds between syncs", (v) => Number.parseInt(v, 10))
+    .option("--interval <seconds>", "seconds between syncs", parseDaemonInterval)
     .option("--eager", "clone every repo instead of writing placeholders", false)
     .option("--no-fetch", "do not fetch repos or check freshness")
     .option("--no-fast-forward", "check freshness without updating repos")
@@ -562,7 +571,7 @@ export function buildProgram(): Command {
     .command("install")
     .description("set up background sync to start after login")
     .argument("[workspacePath]", "workspace to sync", ".")
-    .option("--interval <seconds>", "seconds between syncs", (v) => Number.parseInt(v, 10))
+    .option("--interval <seconds>", "seconds between syncs", parseDaemonInterval)
     .option("--entry <path>", "boot executable for the service to run")
     .action((workspacePath: string, options: { interval?: number; entry?: string }) =>
       daemonInstall(workspacePath, { intervalSeconds: options.interval, entry: options.entry }),

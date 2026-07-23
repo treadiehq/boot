@@ -6,20 +6,23 @@ import path from "node:path";
 
 vi.mock("../core/git", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../core/git")>();
-  return { ...actual, cloneRepo: vi.fn() };
+  return { ...actual, checkoutBranch: vi.fn(), cloneRepo: vi.fn() };
 });
 
-import { cloneRepo } from "../core/git";
+import { checkoutBranch, cloneRepo } from "../core/git";
 import { reconcileFromMap, type ReconcileHooks } from "../core/reconcile";
 import type { SharedRepo } from "../core/map";
 import { reconcileProgressHooks, renderReconcileFailures } from "../ui/plan";
 
+const checkoutMock = vi.mocked(checkoutBranch);
 const cloneMock = vi.mocked(cloneRepo);
 
 let root: string;
 
 beforeEach(async () => {
   root = await fs.mkdtemp(path.join(os.tmpdir(), "boot-plan-"));
+  checkoutMock.mockReset();
+  checkoutMock.mockResolvedValue(undefined);
   cloneMock.mockReset();
 });
 afterEach(async () => {
@@ -129,6 +132,40 @@ describe("reconcileFromMap eager cloning", () => {
       }),
     );
   });
+
+  it("falls back to a placeholder when the saved branch cannot be checked out", async () => {
+    const repo = { ...mk("api", "apps/api", "git@example.com:api.git"), branch: "missing" };
+    const repoPath = path.join(root, repo.relativePath);
+    let clonePath: string | null = null;
+    const onItemDone = vi.fn();
+    cloneMock.mockImplementation(async (_remote, target) => {
+      clonePath = target;
+      await fs.mkdir(path.join(target, ".git"), { recursive: true });
+    });
+    checkoutMock.mockRejectedValue(new Error("branch does not exist"));
+
+    const result = await reconcileFromMap(root, [repo], {
+      eager: true,
+      hooks: { onItemDone },
+    });
+
+    expect(checkoutMock).toHaveBeenCalledWith(clonePath, "missing");
+    expect(existsSync(clonePath!)).toBe(false);
+    expect(existsSync(path.join(repoPath, ".git"))).toBe(false);
+    expect(existsSync(path.join(repoPath, ".boot", "repo.json"))).toBe(true);
+    expect(result.cloned).toBe(0);
+    expect(result.placeholders).toBe(1);
+    expect(result.failures).toEqual([
+      { relativePath: "apps/api", message: "branch does not exist" },
+    ]);
+    expect(onItemDone).toHaveBeenCalledWith(
+      expect.objectContaining({
+        relativePath: "apps/api",
+        requestedAction: "clone",
+        action: "placeholder",
+      }),
+    );
+  });
 });
 
 describe("reconcile failure output", () => {
@@ -155,6 +192,7 @@ describe("reconcile failure output", () => {
 
     expect(logs.join("\n")).toContain("clone failed; prepared placeholder for apps/api");
     expect(logs.join("\n")).toContain("apps/api: authentication failed");
+    expect(logs.join("\n")).toContain("then hydrate the placeholders");
   });
 });
 

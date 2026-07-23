@@ -118,6 +118,7 @@ function serviceFromImage(image: string | undefined): ServiceDefinition | null {
 
 async function discoverServices(directory: string): Promise<Record<string, ServiceDefinition>> {
   const services: Record<string, ServiceDefinition> = {};
+  const usedIds = new Set<string>();
   for (const fileName of COMPOSE_FILES) {
     try {
       const parsed = composeSchema.safeParse(
@@ -126,13 +127,29 @@ async function discoverServices(directory: string): Promise<Record<string, Servi
       if (!parsed.success) continue;
       for (const [name, service] of Object.entries(parsed.data.services ?? {})) {
         const discovered = serviceFromImage(service.image);
-        if (discovered) services[toIdentifier(name, "service")] = discovered;
+        if (discovered) {
+          const id = uniqueIdentifier(toIdentifier(name, "service"), usedIds);
+          services[id] = discovered;
+        }
       }
     } catch {
       // Compose files are optional and malformed files are left to their own tooling.
     }
   }
   return services;
+}
+
+function addDiscoveredServices(
+  services: Record<string, ServiceDefinition>,
+  discovered: Record<string, ServiceDefinition>,
+  usedIds: Set<string>,
+  scope?: string,
+  alwaysScope = false,
+): void {
+  for (const [name, definition] of Object.entries(discovered)) {
+    const base = scope && (alwaysScope || usedIds.has(name)) ? `${scope}-${name}` : name;
+    services[uniqueIdentifier(base, usedIds)] = definition;
+  }
 }
 
 /**
@@ -146,8 +163,15 @@ export async function discoverWorkspace(workspacePath: string): Promise<Workspac
   const repositories: WorkspaceDefinition["repositories"] = {};
   const tools: Record<string, string> = {};
   const services: Record<string, ServiceDefinition> = {};
+  const usedServiceIds = new Set<string>();
   const commands: Record<string, CommandDefinition> = {};
   const envNames = new Set(await discoverEnvironmentNames(root));
+
+  addDiscoveredServices(
+    services,
+    await discoverServices(root),
+    usedServiceIds,
+  );
 
   for (const repo of scan.repos) {
     const id = uniqueIdentifier(toIdentifier(repo.name, "repository"), usedIds);
@@ -182,10 +206,14 @@ export async function discoverWorkspace(workspacePath: string): Promise<Workspac
     }
 
     for (const name of await discoverEnvironmentNames(repo.absolutePath)) envNames.add(name);
-    Object.assign(services, await discoverServices(repo.absolutePath));
+    addDiscoveredServices(
+      services,
+      await discoverServices(repo.absolutePath),
+      usedServiceIds,
+      id,
+      scan.repos.length > 1,
+    );
   }
-
-  Object.assign(services, await discoverServices(root));
 
   const workspaceName = scan.config.workspaceName ?? scan.rootName;
   const candidate = {

@@ -10,6 +10,7 @@ import {
   readWorkspaceMap,
   writeMachineState,
 } from "../core/map";
+import { resolveWithinRoot } from "../core/pathUtils";
 import { reconcileFromMap } from "../core/reconcile";
 import { scanWorkspace } from "../core/scanner";
 import { loadTransport } from "../core/transport";
@@ -103,10 +104,13 @@ export async function pullCommand(workspacePath = ".", options: PullOptions = {}
     }
 
     if (recon.failures.length > 0) {
+      const retryPath = resolveWithinRoot(root, recon.failures[0]!.relativePath);
       throw new Error(
         `The workspace map was updated, but ${recon.failures.length} ${
           recon.failures.length === 1 ? "repository" : "repositories"
-        } could not be cloned. Fix the reported problems, then run: boot pull ${commandArg(root)} --eager`,
+        } could not be cloned. Placeholders were prepared instead. Fix the reported ${
+          recon.failures.length === 1 ? "problem" : "problems"
+        }, then run: boot hydrate ${commandArg(retryPath)}`,
       );
     }
 

@@ -226,6 +226,25 @@ describe("install / uninstall (injected runner)", () => {
     expect(calls.some((c) => c.includes("disable"))).toBe(true);
   });
 
+  it.each([Number.NaN, 0, -30, 60.5, Number.MAX_SAFE_INTEGER + 1])(
+    "rejects invalid interval %s before writing or enabling a service",
+    async (intervalSeconds) => {
+      const file = serviceFilePath("systemd", root, home);
+
+      await expect(
+        daemonInstall(root, {
+          platform: "systemd",
+          home,
+          runner,
+          intervalSeconds,
+        }),
+      ).rejects.toThrow("Daemon interval must be a positive whole number of seconds.");
+
+      expect(existsSync(file)).toBe(false);
+      expect(calls).toEqual([]);
+    },
+  );
+
   it("writes a launchd plist and runs bootstrap", async () => {
     await daemonInstall(root, {
       platform: "launchd",

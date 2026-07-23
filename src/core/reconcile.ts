@@ -49,7 +49,7 @@ export interface ReconcileResult {
   skipped: number;
   /** What would be / was created, in apply order. */
   plan: ReconcileItem[];
-  /** Clone failures that fell back to retryable placeholders. */
+  /** Eager clone or checkout failures that fell back to retryable placeholders. */
   failures: Array<{ relativePath: string; message: string }>;
 }
 
@@ -123,17 +123,17 @@ export async function reconcileFromMap(
       const clonePath = await fs.mkdtemp(
         path.join(parentPath, `.${path.basename(repoPath)}.boot-clone-`),
       );
-      let cloneFailure: { error: unknown } | null = null;
+      let creationFailure: { error: unknown } | null = null;
       try {
         await cloneRepo(repo.remoteUrl, clonePath);
         if (repo.branch) {
-          await checkoutBranch(clonePath, repo.branch).catch(() => undefined);
+          await checkoutBranch(clonePath, repo.branch);
         }
       } catch (error) {
-        cloneFailure = { error };
+        creationFailure = { error };
       }
 
-      if (!cloneFailure) {
+      if (!creationFailure) {
         try {
           await fs.rename(clonePath, repoPath);
         } catch {
@@ -154,15 +154,15 @@ export async function reconcileFromMap(
         continue;
       }
 
-      // Clone failed — remove only boot's temporary directory, then leave a
-      // clean placeholder at the untouched final path for a later retry.
+      // Clone or checkout failed — remove only boot's temporary directory,
+      // then leave a clean placeholder at the untouched final path for retry.
       await fs.rm(clonePath, { recursive: true, force: true }).catch(() => undefined);
       result.failures.push({
         relativePath: repo.relativePath,
         message:
-          cloneFailure.error instanceof Error
-            ? cloneFailure.error.message
-            : String(cloneFailure.error),
+          creationFailure.error instanceof Error
+            ? creationFailure.error.message
+            : String(creationFailure.error),
       });
       taken = "placeholder";
     }

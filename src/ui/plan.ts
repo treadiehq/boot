@@ -51,7 +51,7 @@ export function renderReconcileFailures(failures: ReconcileResult["failures"]): 
   logger.warn(
     `Prepared placeholders instead. Fix the reported ${
       failures.length === 1 ? "problem" : "problems"
-    }, then retry.`,
+    }, then hydrate the placeholders.`,
   );
 }
 

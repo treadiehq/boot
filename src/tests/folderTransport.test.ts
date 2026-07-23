@@ -17,6 +17,7 @@ import {
   readWorkspaceMap,
   writeLinkConfig,
   writeWorkspaceMap,
+  type SharedRepo,
 } from "../core/map";
 import { readPlaceholder } from "../core/placeholder";
 import { isGitRepo } from "../core/git";
@@ -196,6 +197,18 @@ async function makeRepo(r: string, dir: string, name: string): Promise<void> {
   execFileSync("git", ["-C", remote, "symbolic-ref", "HEAD", "refs/heads/main"], { stdio: "pipe" });
 }
 
+function unavailableRepo(relativePath: string, remoteUrl: string): SharedRepo {
+  return {
+    name: path.basename(relativePath),
+    relativePath,
+    remoteUrl,
+    branch: "main",
+    lastCommit: null,
+    packageManager: null,
+    projectType: "unknown",
+  };
+}
+
 describe.skipIf(!GIT_OK)("folder map sync across two machines (e2e)", () => {
   let e2eRoot: string;
   let sharedFolder: string;
@@ -270,6 +283,48 @@ describe.skipIf(!GIT_OK)("folder map sync across two machines (e2e)", () => {
 
     expect((await readLinkConfig(recoveredWorkspace))?.kind).toBe("folder");
     expect(existsSync(paths.mapDir)).toBe(true);
+  });
+
+  it("points failed link and pull clones to their prepared placeholders", async () => {
+    const missingRemote = path.join(e2eRoot, "missing.git");
+
+    const linkShared = path.join(e2eRoot, "link-retry-shared");
+    const linkWorkspace = path.join(e2eRoot, "link-retry-workspace");
+    const linkHome = path.join(e2eRoot, "link-retry-home");
+    const linkMap = emptyWorkspaceMap("link-retry");
+    linkMap.repos.push(unavailableRepo("apps/broken-link", missingRemote));
+    await writeWorkspaceMap(linkShared, linkMap);
+
+    await expect(
+      asMachine(linkHome, () =>
+        linkCommand(linkShared, linkWorkspace, { folder: true, eager: true }),
+      ),
+    ).rejects.toThrow(
+      `boot hydrate ${path.join(linkWorkspace, "apps", "broken-link")}`,
+    );
+    expect(
+      existsSync(path.join(linkWorkspace, "apps", "broken-link", ".boot", "repo.json")),
+    ).toBe(true);
+
+    const pullShared = path.join(e2eRoot, "pull-retry-shared");
+    const pullWorkspace = path.join(e2eRoot, "pull-retry-workspace");
+    const pullHome = path.join(e2eRoot, "pull-retry-home");
+    await writeWorkspaceMap(pullShared, emptyWorkspaceMap("pull-retry"));
+    await asMachine(pullHome, () =>
+      linkCommand(pullShared, pullWorkspace, { folder: true }),
+    );
+    const pullMap = emptyWorkspaceMap("pull-retry");
+    pullMap.repos.push(unavailableRepo("apps/broken-pull", missingRemote));
+    await writeWorkspaceMap(pullShared, pullMap);
+
+    await expect(
+      asMachine(pullHome, () => pullCommand(pullWorkspace, { eager: true })),
+    ).rejects.toThrow(
+      `boot hydrate ${path.join(pullWorkspace, "apps", "broken-pull")}`,
+    );
+    expect(
+      existsSync(path.join(pullWorkspace, "apps", "broken-pull", ".boot", "repo.json")),
+    ).toBe(true);
   });
 
   it("a second machine receives the structure as placeholders — no git remote involved", async () => {

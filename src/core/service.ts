@@ -5,6 +5,14 @@ import path from "node:path";
 /** OS service managers boot knows how to install into. */
 export type ServicePlatform = "launchd" | "systemd" | "schtasks";
 
+/** Validate the interval before a daemon starts or a managed service is written. */
+export function validateDaemonInterval(intervalSeconds: number): number {
+  if (!Number.isSafeInteger(intervalSeconds) || intervalSeconds <= 0) {
+    throw new Error("Daemon interval must be a positive whole number of seconds.");
+  }
+  return intervalSeconds;
+}
+
 /** Map a Node platform to its service manager, or null when unsupported. */
 export function detectServicePlatform(
   platform: NodeJS.Platform = process.platform,
