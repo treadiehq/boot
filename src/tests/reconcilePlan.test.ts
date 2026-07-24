@@ -26,6 +26,7 @@ beforeEach(async () => {
   cloneMock.mockReset();
 });
 afterEach(async () => {
+  vi.restoreAllMocks();
   await fs.rm(root, { recursive: true, force: true });
 });
 
@@ -165,6 +166,120 @@ describe("reconcileFromMap eager cloning", () => {
         action: "placeholder",
       }),
     );
+  });
+
+  it("falls back after a promotion failure and continues with remaining repos", async () => {
+    const eagerRepos = [
+      mk("api", "apps/api", "git@example.com:api.git"),
+      mk("web", "apps/web", "git@example.com:web.git"),
+      mk("util", "tools/util", "git@example.com:util.git"),
+    ];
+    const apiPath = path.join(root, "apps", "api");
+    const clonePaths = new Map<string, string>();
+    const onItemDone = vi.fn();
+    cloneMock.mockImplementation(async (remote, target) => {
+      clonePaths.set(remote, target);
+      await fs.mkdir(path.join(target, ".git"), { recursive: true });
+    });
+    const originalRename = fs.rename.bind(fs);
+    vi.spyOn(fs, "rename").mockImplementation(async (from, to) => {
+      if (String(to) === apiPath) {
+        throw Object.assign(new Error("operation not permitted"), { code: "EPERM" });
+      }
+      await originalRename(from, to);
+    });
+
+    const result = await reconcileFromMap(root, eagerRepos, {
+      eager: true,
+      hooks: { onItemDone },
+    });
+
+    expect(existsSync(clonePaths.get("git@example.com:api.git")!)).toBe(false);
+    expect(existsSync(path.join(apiPath, ".boot", "repo.json"))).toBe(true);
+    expect(existsSync(path.join(root, "apps", "web", ".git"))).toBe(true);
+    expect(existsSync(path.join(root, "tools", "util", ".git"))).toBe(true);
+    expect(result).toMatchObject({
+      cloned: 2,
+      placeholders: 1,
+      failures: [
+        {
+          relativePath: "apps/api",
+          message: expect.stringContaining("EPERM"),
+        },
+      ],
+    });
+    expect(onItemDone).toHaveBeenCalledTimes(3);
+    expect(onItemDone).toHaveBeenCalledWith(
+      expect.objectContaining({
+        relativePath: "apps/api",
+        requestedAction: "clone",
+        action: "placeholder",
+      }),
+    );
+  });
+
+  it("respects a repository that appears while a temporary clone is promoted", async () => {
+    const eagerRepos = [
+      mk("api", "apps/api", "git@example.com:api.git"),
+      mk("web", "apps/web", "git@example.com:web.git"),
+    ];
+    const apiPath = path.join(root, "apps", "api");
+    const onItemDone = vi.fn();
+    cloneMock.mockImplementation(async (_remote, target) => {
+      await fs.mkdir(path.join(target, ".git"), { recursive: true });
+    });
+    const originalRename = fs.rename.bind(fs);
+    vi.spyOn(fs, "rename").mockImplementation(async (from, to) => {
+      if (String(to) === apiPath) {
+        await fs.mkdir(path.join(apiPath, ".git"), { recursive: true });
+        await fs.writeFile(path.join(apiPath, "winner.txt"), "keep");
+        throw Object.assign(new Error("destination exists"), { code: "EEXIST" });
+      }
+      await originalRename(from, to);
+    });
+
+    const result = await reconcileFromMap(root, eagerRepos, {
+      eager: true,
+      hooks: { onItemDone },
+    });
+
+    await expect(fs.readFile(path.join(apiPath, "winner.txt"), "utf8")).resolves.toBe("keep");
+    expect(existsSync(path.join(root, "apps", "web", ".git"))).toBe(true);
+    expect(result).toMatchObject({
+      cloned: 1,
+      placeholders: 0,
+      skipped: 1,
+      failures: [],
+    });
+    expect(onItemDone).toHaveBeenCalledWith(
+      expect.objectContaining({
+        relativePath: "apps/api",
+        requestedAction: "clone",
+        action: "skipped",
+      }),
+    );
+  });
+
+  it("does not overwrite a conflicting path that appears during promotion", async () => {
+    const repo = mk("api", "apps/api", "git@example.com:api.git");
+    const repoPath = path.join(root, repo.relativePath);
+    cloneMock.mockImplementation(async (_remote, target) => {
+      await fs.mkdir(path.join(target, ".git"), { recursive: true });
+    });
+    vi.spyOn(fs, "rename").mockImplementation(async (_from, to) => {
+      if (String(to) === repoPath) {
+        await fs.mkdir(repoPath, { recursive: true });
+        await fs.writeFile(path.join(repoPath, "notes.txt"), "keep");
+        throw Object.assign(new Error("destination exists"), { code: "EEXIST" });
+      }
+    });
+
+    await expect(reconcileFromMap(root, [repo], { eager: true })).rejects.toThrow(
+      /path already exists/i,
+    );
+
+    await expect(fs.readFile(path.join(repoPath, "notes.txt"), "utf8")).resolves.toBe("keep");
+    expect(existsSync(path.join(repoPath, ".boot"))).toBe(false);
   });
 });
 

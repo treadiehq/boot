@@ -104,10 +104,48 @@ describe("agentCommand", () => {
     );
 
     await expect(
-      agentCommand("git@example.com:map.git", "/workspace", { json: true }),
-    ).rejects.toThrow(/agent workspace is not ready: 1 problem/i);
+      agentCommand("git@example.com:map.git", "/workspace", {
+        env: true,
+        json: true,
+      }),
+    ).rejects.toThrow(
+      /boot agent git@example\.com:map\.git \/workspace --env --json/,
+    );
 
     expect(lines).toHaveLength(1);
     expect(outputMock).toHaveBeenCalledOnce();
+  });
+
+  it("preserves every behavior-changing option in the retry command", async () => {
+    bootstrapMock.mockResolvedValue(
+      compatibilityResult({
+        dryRun: false,
+        failures: [
+          {
+            kind: "repository",
+            name: "api",
+            message: "authentication failed",
+          },
+        ],
+      }),
+    );
+
+    await expect(
+      agentCommand("/maps/team map", "/workspace/agent root", {
+        profile: "review profile",
+        provider: "remote provider",
+        runSetup: true,
+        env: false,
+        folder: true,
+        eager: true,
+        all: true,
+        json: true,
+        hydrate: ["apps/api", "libs/*"],
+      }),
+    ).rejects.toThrow(
+      "boot agent '/maps/team map' '/workspace/agent root' " +
+        "--profile 'review profile' --provider 'remote provider' --run-setup " +
+        "--no-env --folder --eager --all --json --hydrate apps/api 'libs/*'",
+    );
   });
 });

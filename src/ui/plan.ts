@@ -60,11 +60,13 @@ export function reconcileProgressHooks(): ReconcileHooks {
   return {
     onItemDone: ({ index, total, ms, relativePath, action, requestedAction }) => {
       const verb =
-        requestedAction === "clone" && action === "placeholder"
-          ? "clone failed; prepared placeholder for"
-          : action === "clone"
-            ? "cloned"
-            : "prepared";
+        action === "skipped"
+          ? "already present"
+          : requestedAction === "clone" && action === "placeholder"
+            ? "clone failed; prepared placeholder for"
+            : action === "clone"
+              ? "cloned"
+              : "prepared";
       logger.info(
         `${stepPrefix(index, total)} ${verb} ${colors.cyan(relativePath)} ${colors.dim(`(${fmtMs(ms)})`)}`,
       );

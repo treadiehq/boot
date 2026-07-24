@@ -273,11 +273,16 @@ async function realizeCompatibilityMap(
     dryRun: options.dryRun,
   });
   const reconciliation = combineReconciliation(selectedResult, remainingResult);
-  const failures: BootstrapFailure[] = reconciliation.failures.map((failure) => ({
-    kind: "repository",
-    name: failure.relativePath,
-    message: failure.message,
-  }));
+  const repositoryFailures = new Map<string, BootstrapFailure>(
+    reconciliation.failures.map((failure) => [
+      failure.relativePath,
+      {
+        kind: "repository",
+        name: failure.relativePath,
+        message: failure.message,
+      },
+    ]),
+  );
   const completed: string[] = [];
 
   if (!options.dryRun && selectedPaths.length > 0) {
@@ -290,18 +295,18 @@ async function realizeCompatibilityMap(
     for (const repository of targets) {
       try {
         const outcome = await hydratePlaceholder(repository.absolutePath);
-        if (outcome === "hydrated") {
+        if (outcome === "hydrated" || outcome === "already-hydrated") {
           completed.push(repository.relativePath);
+          repositoryFailures.delete(repository.relativePath);
         } else if (outcome === "hydrated-checkout-failed") {
-          completed.push(repository.relativePath);
-          failures.push({
+          repositoryFailures.set(repository.relativePath, {
             kind: "repository",
             name: repository.relativePath,
             message: "repository was cloned, but its saved branch could not be checked out",
           });
         }
       } catch (error) {
-        failures.push({
+        repositoryFailures.set(repository.relativePath, {
           kind: "repository",
           name: repository.relativePath,
           message: sanitizeUserText((error as Error).message),
@@ -310,6 +315,7 @@ async function realizeCompatibilityMap(
     }
   }
 
+  const failures = [...repositoryFailures.values()];
   let environmentFiles = 0;
   if (!options.dryRun && options.env === true) {
     if (!keyExists()) {

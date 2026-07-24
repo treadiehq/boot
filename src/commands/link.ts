@@ -8,6 +8,7 @@ import {
   parseGitHubSlug,
 } from "../core/github";
 import { loadMachineIdentity } from "../core/identity";
+import { withWorkspaceMapLock } from "../core/lock";
 import {
   emptyWorkspaceMap,
   isLinked,
@@ -130,73 +131,83 @@ export async function linkCommand(
   }
 
   const identity = await loadMachineIdentity();
-  const source = await withSpinner(
-    options.folder ? "syncing workspace map from folder" : "cloning workspace map",
-    () => initializeWorkspaceSource(remote, root, { folder: options.folder }),
-  );
-  const transport = source.transport!;
-  let map = (await readWorkspaceMap(paths.mapDir)) ?? emptyWorkspaceMap(path.basename(root));
-
-  // Publish what this machine already has into the shared map.
-  const scan = await scanWorkspace(root);
-  map = mergeReposIntoMap(map, scan.repos.map(sharedRepoFromEntry), {
-    ignoreFiles: scan.ignoreFiles,
-    defaultIgnoreRules: scan.defaultIgnoreRules,
-  });
-  if (scan.config.definition) {
-    map = mergeWorkspaceDefinitionIntoMap(map, scan.config.definition);
-    await writePublishedWorkspace(paths.mapDir, scan.config.definition);
-  }
-  await writeWorkspaceMap(paths.mapDir, map);
-
-  // Recreate structure for repos that only exist elsewhere.
-  const recon = await reconcileFromMap(root, map.repos, {
-    eager: options.eager,
-    hooks: reconcileProgressHooks(),
-  });
-  if (recon.placeholders > 0) {
-    logger.success(
-      `Prepared ${recon.placeholders} repository ${
-        recon.placeholders === 1 ? "placeholder" : "placeholders"
-      }. Each placeholder clones its repository on first use.`,
-    );
-  }
-  if (recon.cloned > 0) {
-    logger.success(
-      `Cloned ${recon.cloned} ${recon.cloned === 1 ? "repository" : "repositories"}.`,
-    );
-  }
-  renderReconcileFailures(recon.failures);
-
-  // Register this machine (rescan so freshly-written placeholders are included).
-  const rescan = await scanWorkspace(root);
-  await writeMachineState(paths.mapDir, machineStateFromScan(identity, root, rescan.repos));
-
-  await transport.push(`link: ${identity.hostname} (${shortId(identity.machineId)})`);
-
-  if (recon.failures.length > 0) {
-    const retryPath = resolveWithinRoot(root, recon.failures[0]!.relativePath);
-    throw new Error(
-      `The workspace was linked, but ${recon.failures.length} ${
-        recon.failures.length === 1 ? "repository" : "repositories"
-      } could not be cloned. Placeholders were prepared instead. Fix the reported ${
-        recon.failures.length === 1 ? "problem" : "problems"
-      }, then run: boot hydrate ${commandArg(retryPath)}`,
-    );
-  }
-
-  logger.info();
-  logger.success(
-    `Linked as ${colors.cyan(identity.hostname)}. The workspace map has ${map.repos.length} ${
-      map.repos.length === 1 ? "repository" : "repositories"
-    }.`,
-  );
-  if (recon.placeholders > 0) {
-    const placeholder = rescan.repos.find(
-      (repository) => repository.hydrate.status === "placeholder" && repository.remoteUrl,
-    );
-    if (placeholder) {
-      logger.next(`Clone one now: boot hydrate ${commandArg(placeholder.absolutePath)}`);
+  await withWorkspaceMapLock(root, async () => {
+    // The earlier check provides a fast error. This in-lock check closes the
+    // race where another process links the workspace while remote setup runs.
+    if (isLinked(root)) {
+      throw new Error(
+        `This workspace is already linked. Pull changes with: boot pull ${commandArg(root)}`,
+      );
     }
-  }
+
+    const source = await withSpinner(
+      options.folder ? "syncing workspace map from folder" : "cloning workspace map",
+      () => initializeWorkspaceSource(remote, root, { folder: options.folder }),
+    );
+    const transport = source.transport!;
+    let map = (await readWorkspaceMap(paths.mapDir)) ?? emptyWorkspaceMap(path.basename(root));
+
+    // Publish what this machine already has into the shared map.
+    const scan = await scanWorkspace(root);
+    map = mergeReposIntoMap(map, scan.repos.map(sharedRepoFromEntry), {
+      ignoreFiles: scan.ignoreFiles,
+      defaultIgnoreRules: scan.defaultIgnoreRules,
+    });
+    if (scan.config.definition) {
+      map = mergeWorkspaceDefinitionIntoMap(map, scan.config.definition);
+      await writePublishedWorkspace(paths.mapDir, scan.config.definition);
+    }
+    await writeWorkspaceMap(paths.mapDir, map);
+
+    // Recreate structure for repos that only exist elsewhere.
+    const recon = await reconcileFromMap(root, map.repos, {
+      eager: options.eager,
+      hooks: reconcileProgressHooks(),
+    });
+    if (recon.placeholders > 0) {
+      logger.success(
+        `Prepared ${recon.placeholders} repository ${
+          recon.placeholders === 1 ? "placeholder" : "placeholders"
+        }. Each placeholder clones its repository on first use.`,
+      );
+    }
+    if (recon.cloned > 0) {
+      logger.success(
+        `Cloned ${recon.cloned} ${recon.cloned === 1 ? "repository" : "repositories"}.`,
+      );
+    }
+    renderReconcileFailures(recon.failures);
+
+    // Register this machine (rescan so freshly-written placeholders are included).
+    const rescan = await scanWorkspace(root);
+    await writeMachineState(paths.mapDir, machineStateFromScan(identity, root, rescan.repos));
+
+    await transport.push(`link: ${identity.hostname} (${shortId(identity.machineId)})`);
+
+    if (recon.failures.length > 0) {
+      const retryPath = resolveWithinRoot(root, recon.failures[0]!.relativePath);
+      throw new Error(
+        `The workspace was linked, but ${recon.failures.length} ${
+          recon.failures.length === 1 ? "repository" : "repositories"
+        } could not be cloned. Placeholders were prepared instead. Fix the reported ${
+          recon.failures.length === 1 ? "problem" : "problems"
+        }, then run: boot hydrate ${commandArg(retryPath)}`,
+      );
+    }
+
+    logger.info();
+    logger.success(
+      `Linked as ${colors.cyan(identity.hostname)}. The workspace map has ${map.repos.length} ${
+        map.repos.length === 1 ? "repository" : "repositories"
+      }.`,
+    );
+    if (recon.placeholders > 0) {
+      const placeholder = rescan.repos.find(
+        (repository) => repository.hydrate.status === "placeholder" && repository.remoteUrl,
+      );
+      if (placeholder) {
+        logger.next(`Clone one now: boot hydrate ${commandArg(placeholder.absolutePath)}`);
+      }
+    }
+  });
 }

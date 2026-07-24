@@ -36,6 +36,12 @@ export interface WorkspaceSourceOptions {
   dryRun?: boolean;
 }
 
+function alreadyLinkedError(root: string): Error {
+  return new Error(
+    `Workspace ${quoteUserValue(root, 500)} is already linked. Use the existing source or choose an unlinked workspace.`,
+  );
+}
+
 function sourceKind(options: WorkspaceSourceOptions): WorkspaceSourceKind {
   return options.folder ? "folder" : "git";
 }
@@ -80,6 +86,7 @@ async function assertMatchingSource(
  * Initialize a workspace-map working copy without reconciling repository
  * topology. Commands decide whether to apply the compatibility map or a
  * resolved workspace profile after the canonical definition has been loaded.
+ * Production callers must hold the workspace-map lock for the full transaction.
  */
 export async function initializeWorkspaceSource(
   remote: string,
@@ -91,33 +98,59 @@ export async function initializeWorkspaceSource(
   const paths = mapPaths(absoluteRoot);
   await fs.mkdir(paths.bootDir, { recursive: true });
 
-  let transport: MapTransport | undefined;
+  if (isLinked(absoluteRoot)) throw alreadyLinkedError(absoluteRoot);
   try {
-    transport =
-      kind === "folder"
-        ? await initFolderMap(remote, paths.mapDir)
-        : await cloneMap(remote, paths.mapDir);
+    await fs.access(paths.linkPath);
+    throw new Error(
+      `Workspace ${quoteUserValue(absoluteRoot, 500)} has link settings but no workspace data. ` +
+        "Run `boot doctor --system` and repair the link before retrying.",
+    );
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+
+  const stagingRoot = await fs.mkdtemp(path.join(paths.bootDir, ".map-init-"));
+  const stagingMapDir = path.join(stagingRoot, "map");
+  let installed = false;
+  try {
+    if (kind === "folder") {
+      await initFolderMap(remote, stagingMapDir);
+    } else {
+      await cloneMap(remote, stagingMapDir);
+    }
     // Validate imported compatibility data before persisting the link pointer.
-    await readWorkspaceMap(paths.mapDir);
+    await readWorkspaceMap(stagingMapDir);
+
+    // Re-check immediately before publishing the staged map. A caller that
+    // skipped the lock still cannot make cleanup target another process's data.
+    if (isLinked(absoluteRoot)) throw alreadyLinkedError(absoluteRoot);
+    await fs.rename(stagingMapDir, paths.mapDir);
+    installed = true;
     await writeLinkConfig(absoluteRoot, {
       kind,
       remote: kind === "folder" ? path.resolve(remote) : remote,
       linkedAt: new Date().toISOString(),
     });
+    const transport = await loadTransport(absoluteRoot);
+    return {
+      kind,
+      state: "linked",
+      mapDir: paths.mapDir,
+      inspectionRoot: absoluteRoot,
+      transport,
+      cleanup: async () => undefined,
+    };
   } catch (error) {
-    await fs.rm(paths.mapDir, { recursive: true, force: true });
-    await fs.rm(paths.linkPath, { force: true });
+    // Only remove the final paths after this call successfully installed its
+    // own staged map. Never delete a map that made initialization fail.
+    if (installed) {
+      await fs.rm(paths.mapDir, { recursive: true, force: true });
+      await fs.rm(paths.linkPath, { force: true });
+    }
     throw error;
+  } finally {
+    await fs.rm(stagingRoot, { recursive: true, force: true });
   }
-
-  return {
-    kind,
-    state: "linked",
-    mapDir: paths.mapDir,
-    inspectionRoot: absoluteRoot,
-    transport,
-    cleanup: async () => undefined,
-  };
 }
 
 async function previewWorkspaceSource(
@@ -166,24 +199,28 @@ export async function openWorkspaceSource(
   const absoluteRoot = path.resolve(root);
   const kind = sourceKind(options);
 
-  if (!isLinked(absoluteRoot)) {
-    if (options.dryRun) return previewWorkspaceSource(remote, options);
-    return withWorkspaceMapLock(absoluteRoot, () =>
-      initializeWorkspaceSource(remote, absoluteRoot, options),
-    );
+  // A fresh dry-run must not create the target's .boot directory just to take
+  // a lock. Preview data lives entirely in an isolated temporary workspace.
+  if (options.dryRun && !isLinked(absoluteRoot)) {
+    return previewWorkspaceSource(remote, options);
   }
 
-  await assertMatchingSource(absoluteRoot, remote, kind);
-  const transport = await loadTransport(absoluteRoot);
-  if (!options.dryRun) {
-    await withWorkspaceMapLock(absoluteRoot, () => transport.pull());
-  }
-  return {
-    kind,
-    state: options.dryRun ? "cached" : "updated",
-    mapDir: mapPaths(absoluteRoot).mapDir,
-    inspectionRoot: absoluteRoot,
-    transport,
-    cleanup: async () => undefined,
-  };
+  return withWorkspaceMapLock(absoluteRoot, async () => {
+    if (!isLinked(absoluteRoot)) {
+      if (options.dryRun) return previewWorkspaceSource(remote, options);
+      return initializeWorkspaceSource(remote, absoluteRoot, options);
+    }
+
+    await assertMatchingSource(absoluteRoot, remote, kind);
+    const transport = await loadTransport(absoluteRoot);
+    if (!options.dryRun) await transport.pull();
+    return {
+      kind,
+      state: options.dryRun ? "cached" : "updated",
+      mapDir: mapPaths(absoluteRoot).mapDir,
+      inspectionRoot: absoluteRoot,
+      transport,
+      cleanup: async () => undefined,
+    };
+  });
 }

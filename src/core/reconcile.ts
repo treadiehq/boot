@@ -13,6 +13,7 @@ import { resolveWithinRoot } from "./pathUtils";
 import { quoteUserValue } from "./userErrors";
 
 export type ReconcileAction = "clone" | "placeholder";
+export type ReconcileOutcome = ReconcileAction | "skipped";
 
 export interface ReconcileItem {
   relativePath: string;
@@ -28,8 +29,10 @@ export interface ReconcileHooks {
       index: number;
       total: number;
       ms: number;
+      relativePath: string;
+      action: ReconcileOutcome;
       requestedAction: ReconcileAction;
-    } & ReconcileItem,
+    },
   ) => void;
 }
 
@@ -49,8 +52,23 @@ export interface ReconcileResult {
   skipped: number;
   /** What would be / was created, in apply order. */
   plan: ReconcileItem[];
-  /** Eager clone or checkout failures that fell back to retryable placeholders. */
+  /** Eager clone, checkout, or promotion failures with retryable placeholders. */
   failures: Array<{ relativePath: string; message: string }>;
+}
+
+function existingPathError(relativePath: string): Error {
+  return new Error(
+    `Cannot create repository at ${quoteUserValue(relativePath)} because the path already exists and is not a Git repository or repository download folder. Move or remove the existing item, then retry.`,
+  );
+}
+
+function promotionFailure(relativePath: string, error: unknown): Error {
+  const code = (error as NodeJS.ErrnoException)?.code;
+  return new Error(
+    `Could not finish creating repository at ${quoteUserValue(relativePath)}${
+      code ? ` (${code})` : ""
+    }. Check that the destination is writable and does not already exist, then retry.`,
+  );
 }
 
 /** Repos in the map that aren't present locally yet, with their intended action. */
@@ -70,9 +88,7 @@ function planReconcile(root: string, repos: SharedRepo[], eager: boolean): {
       continue;
     }
     if (existsSync(repoPath)) {
-      throw new Error(
-        `Cannot create repository at ${quoteUserValue(repo.relativePath)} because the path already exists and is not a Git repository or repository download folder. Move or remove the existing item, then retry.`,
-      );
+      throw existingPathError(repo.relativePath);
     }
     plan.push({ repo, action: eager && repo.remoteUrl ? "clone" : "placeholder" });
   }
@@ -115,7 +131,7 @@ export async function reconcileFromMap(
     const index = i + 1;
     options.hooks?.onItem?.({ index, total, relativePath: repo.relativePath, action });
     const started = Date.now();
-    let taken: ReconcileAction = action;
+    let taken: ReconcileOutcome = action;
 
     if (action === "clone" && repo.remoteUrl) {
       const parentPath = path.dirname(repoPath);
@@ -136,12 +152,12 @@ export async function reconcileFromMap(
       if (!creationFailure) {
         try {
           await fs.rename(clonePath, repoPath);
-        } catch {
-          await fs.rm(clonePath, { recursive: true, force: true }).catch(() => undefined);
-          throw new Error(
-            `Could not finish creating repository at ${quoteUserValue(repo.relativePath)}. Check that the destination is writable and does not already exist, then retry.`,
-          );
+        } catch (error) {
+          creationFailure = { error: promotionFailure(repo.relativePath, error) };
         }
+      }
+
+      if (!creationFailure) {
         result.cloned += 1;
         options.hooks?.onItemDone?.({
           index,
@@ -154,9 +170,26 @@ export async function reconcileFromMap(
         continue;
       }
 
-      // Clone or checkout failed — remove only boot's temporary directory,
-      // then leave a clean placeholder at the untouched final path for retry.
+      // Clone, checkout, or promotion failed. Remove only Boot's temporary
+      // directory, then leave a clean placeholder at the untouched final path.
       await fs.rm(clonePath, { recursive: true, force: true }).catch(() => undefined);
+
+      // Another process may have populated the destination while this clone was
+      // running. Respect a valid repository or placeholder that won the race.
+      if (isGitRepo(repoPath) || isPlaceholder(repoPath)) {
+        result.skipped += 1;
+        options.hooks?.onItemDone?.({
+          index,
+          total,
+          ms: Date.now() - started,
+          relativePath: repo.relativePath,
+          action: "skipped",
+          requestedAction: action,
+        });
+        continue;
+      }
+      if (existsSync(repoPath)) throw existingPathError(repo.relativePath);
+
       result.failures.push({
         relativePath: repo.relativePath,
         message:
