@@ -8,7 +8,6 @@ import {
   PLACEHOLDER_DIR,
   readPlaceholder,
   writePlaceholder,
-  type PlaceholderMeta,
 } from "./placeholder";
 import { quoteUserValue, sanitizeUserText } from "./userErrors";
 
@@ -16,11 +15,7 @@ export type HydrateOutcome = "hydrated" | "hydrated-checkout-failed" | "already-
 
 /** Optional callbacks so callers can report progress without the core logging itself. */
 export interface HydrateHooks {
-  onPlaceholderFound?(meta: PlaceholderMeta): void;
-  onCloned?(remoteUrl: string): void;
   onCheckedOut?(branch: string): void;
-  onCheckoutFailed?(branch: string): void;
-  onUpdated?(): void;
 }
 
 function hydrationLockPath(repoDir: string): string {
@@ -91,8 +86,6 @@ export async function hydratePlaceholder(
           `${quoteUserValue(label, 500)} does not contain repository download information (.boot/repo.json). Run \`boot pull\` from the workspace root to recreate it.`,
         );
       }
-      hooks.onPlaceholderFound?.(meta);
-
       if (!meta.remoteUrl) {
         throw new Error(
           `Repository ${quoteUserValue(meta.name)} has no URL, so it cannot be downloaded. Add its URL to \`boot.yaml\`, then run \`boot up .\` from the workspace root.`,
@@ -125,8 +118,6 @@ export async function hydratePlaceholder(
         );
       }
 
-      hooks.onCloned?.(meta.remoteUrl);
-
       await excludePlaceholderFromGit(clonePath);
       await writePlaceholder(clonePath, { ...meta, hydrateStatus: "hydrated" });
 
@@ -149,10 +140,8 @@ export async function hydratePlaceholder(
           hooks.onCheckedOut?.(meta.branch);
         } catch {
           checkoutFailed = true;
-          hooks.onCheckoutFailed?.(meta.branch);
         }
       }
-      hooks.onUpdated?.();
 
       return checkoutFailed ? "hydrated-checkout-failed" : "hydrated";
     },

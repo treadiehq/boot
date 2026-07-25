@@ -117,19 +117,15 @@ describe("hydrateCommand", () => {
 
   it("returns a distinct outcome when clone succeeds but checkout fails", async () => {
     const repoDir = await makePlaceholder("apps/mismatch", "git@example.com:mismatch.git");
-    const failedBranches: string[] = [];
     cloneMock.mockImplementation(async (_url: string, target: string) => {
       await fs.mkdir(path.join(target, ".git"), { recursive: true });
       await fs.writeFile(path.join(target, "README.md"), "# mismatch\n");
     });
     checkoutMock.mockRejectedValue(new Error("branch not found"));
 
-    const outcome = await hydratePlaceholder(repoDir, {
-      onCheckoutFailed: (branch) => failedBranches.push(branch),
-    });
+    const outcome = await hydratePlaceholder(repoDir);
 
     expect(outcome).toBe("hydrated-checkout-failed");
-    expect(failedBranches).toEqual(["main"]);
     expect((await readPlaceholder(repoDir))?.hydrateStatus).toBe("hydrated");
   });
 
