@@ -199,6 +199,73 @@ describe("hydrateCommand", () => {
     ).toEqual([]);
   });
 
+  it("cleans the staged clone when placeholder metadata cannot be written", async () => {
+    const repoDir = await makePlaceholder(
+      "apps/metadata",
+      "git@example.com:metadata.git",
+    );
+    cloneMock.mockImplementation(async (_url: string, target: string) => {
+      await fs.mkdir(path.join(target, ".git"), { recursive: true });
+      await fs.writeFile(path.join(target, "README.md"), "# metadata\n");
+    });
+    const originalRename = fs.rename.bind(fs);
+    vi.spyOn(fs, "rename").mockImplementation(async (from, to) => {
+      const target = String(to);
+      if (
+        target.includes(".metadata.boot-stage-") &&
+        target.endsWith(path.join(PLACEHOLDER_DIR, "repo.json"))
+      ) {
+        throw Object.assign(new Error("disk full"), { code: "ENOSPC" });
+      }
+      await originalRename(from, to);
+    });
+
+    await expect(hydratePlaceholder(repoDir)).rejects.toThrow(
+      /could not update its placeholder metadata.*disk full/i,
+    );
+
+    expect((await readPlaceholder(repoDir))?.hydrateStatus).toBe("placeholder");
+    expect(
+      (await fs.readdir(path.dirname(repoDir))).filter((name) =>
+        name.startsWith(".metadata.boot-stage-"),
+      ),
+    ).toEqual([]);
+  });
+
+  it("cleans the staged clone when the original placeholder cannot be moved", async () => {
+    const repoDir = await makePlaceholder(
+      "apps/immovable",
+      "git@example.com:immovable.git",
+    );
+    cloneMock.mockImplementation(async (_url: string, target: string) => {
+      await fs.mkdir(path.join(target, ".git"), { recursive: true });
+      await fs.writeFile(path.join(target, "README.md"), "# immovable\n");
+    });
+    const originalRename = fs.rename.bind(fs);
+    vi.spyOn(fs, "rename").mockImplementation(async (from, to) => {
+      if (
+        String(from) === repoDir &&
+        String(to).startsWith(`${repoDir}.boot-backup-`)
+      ) {
+        throw Object.assign(new Error("permission denied"), { code: "EACCES" });
+      }
+      await originalRename(from, to);
+    });
+
+    await expect(hydratePlaceholder(repoDir)).rejects.toThrow(
+      /could not prepare the existing placeholder for replacement.*permission denied/i,
+    );
+
+    expect((await readPlaceholder(repoDir))?.hydrateStatus).toBe("placeholder");
+    expect(
+      (await fs.readdir(path.dirname(repoDir))).filter(
+        (name) =>
+          name.startsWith(".immovable.boot-stage-") ||
+          name.startsWith("immovable.boot-backup-"),
+      ),
+    ).toEqual([]);
+  });
+
   it("leaves the placeholder intact when cloning fails", async () => {
     const repoDir = await makePlaceholder("apps/flaky", "git@example.com:flaky.git");
     cloneMock.mockRejectedValue(new Error("network down"));

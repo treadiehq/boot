@@ -34,7 +34,9 @@ export function renderPlan(result: ReconcileResult): void {
       ),
     );
   }
-  logger.next("Re-run without --dry-run to prepare the workspace.");
+  if (result.plan.length > 0) {
+    logger.next("Re-run without --dry-run to prepare the workspace.");
+  }
 }
 
 /** Report eager clone failures that safely fell back to placeholders. */

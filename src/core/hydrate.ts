@@ -41,14 +41,12 @@ async function mergePlaceholderFiles(repoDir: string, clonePath: string): Promis
   }
 }
 
-async function failStagedHydration(
-  stageRoot: string,
+function stagedHydrationError(
   summary: string,
   error: unknown,
-): Promise<never> {
-  await fs.rm(stageRoot, { recursive: true, force: true });
+): Error {
   const reason = sanitizeUserText((error as Error).message);
-  throw new Error(
+  return new Error(
     summary +
       (reason ? ` ${reason}` : "") +
       " Fix the reported problem, then retry.",
@@ -99,39 +97,53 @@ export async function hydratePlaceholder(
       const clonePath = path.join(stageRoot, "clone");
 
       try {
-        await cloneRepo(meta.remoteUrl, clonePath);
-      } catch (error) {
-        return failStagedHydration(
-          stageRoot,
-          "Could not download the repository; the existing folder was left unchanged.",
-          error,
-        );
-      }
+        try {
+          await cloneRepo(meta.remoteUrl, clonePath);
+        } catch (error) {
+          throw stagedHydrationError(
+            "Could not download the repository; the existing folder was left unchanged.",
+            error,
+          );
+        }
 
-      try {
-        await mergePlaceholderFiles(repoDir, clonePath);
-      } catch (error) {
-        return failStagedHydration(
-          stageRoot,
-          "The repository was downloaded, but Boot could not preserve the existing placeholder files; the existing folder was left unchanged.",
-          error,
-        );
-      }
+        try {
+          await mergePlaceholderFiles(repoDir, clonePath);
+        } catch (error) {
+          throw stagedHydrationError(
+            "The repository was downloaded, but Boot could not preserve the existing placeholder files; the existing folder was left unchanged.",
+            error,
+          );
+        }
 
-      await excludePlaceholderFromGit(clonePath);
-      await writePlaceholder(clonePath, { ...meta, hydrateStatus: "hydrated" });
+        try {
+          await excludePlaceholderFromGit(clonePath);
+          await writePlaceholder(clonePath, { ...meta, hydrateStatus: "hydrated" });
+        } catch (error) {
+          throw stagedHydrationError(
+            "The repository was downloaded, but Boot could not update its placeholder metadata; the existing folder was left unchanged.",
+            error,
+          );
+        }
 
-      const backupPath = `${repoDir}.boot-backup-${randomBytes(6).toString("hex")}`;
-      await fs.rename(repoDir, backupPath);
-      try {
-        await fs.rename(clonePath, repoDir);
-      } catch (error) {
-        await fs.rename(backupPath, repoDir).catch(() => undefined);
-        await fs.rm(stageRoot, { recursive: true, force: true });
-        throw error;
+        const backupPath = `${repoDir}.boot-backup-${randomBytes(6).toString("hex")}`;
+        try {
+          await fs.rename(repoDir, backupPath);
+        } catch (error) {
+          throw stagedHydrationError(
+            "The repository was downloaded, but Boot could not prepare the existing placeholder for replacement; the existing folder was left unchanged.",
+            error,
+          );
+        }
+        try {
+          await fs.rename(clonePath, repoDir);
+        } catch (error) {
+          await fs.rename(backupPath, repoDir).catch(() => undefined);
+          throw error;
+        }
+        await fs.rm(backupPath, { recursive: true, force: true });
+      } finally {
+        await fs.rm(stageRoot, { recursive: true, force: true }).catch(() => undefined);
       }
-      await fs.rm(backupPath, { recursive: true, force: true });
-      await fs.rm(stageRoot, { recursive: true, force: true });
 
       let checkoutFailed = false;
       if (meta.branch) {

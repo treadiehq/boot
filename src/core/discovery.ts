@@ -64,6 +64,19 @@ export function toIdentifier(value: string, fallback = "workspace"): string {
   return normalized || fallback;
 }
 
+function packageManagerRequirement(
+  value: string,
+): { name: string; requirement: string } | null {
+  const separator = value.indexOf("@");
+  if (separator <= 0) return null;
+  const requirement = value.slice(separator + 1).trim();
+  if (!requirement) return null;
+  return {
+    name: toIdentifier(value.slice(0, separator), "package-manager"),
+    requirement,
+  };
+}
+
 function uniqueIdentifier(base: string, used: Set<string>): string {
   let candidate = base;
   let suffix = 2;
@@ -183,11 +196,8 @@ export async function discoverWorkspace(workspacePath: string): Promise<Workspac
 
     const packageJson = await readPackageJson(repo.absolutePath);
     if (packageJson?.packageManager) {
-      const separator = packageJson.packageManager.lastIndexOf("@");
-      if (separator > 0) {
-        tools[packageJson.packageManager.slice(0, separator)] =
-          packageJson.packageManager.slice(separator + 1);
-      }
+      const requirement = packageManagerRequirement(packageJson.packageManager);
+      if (requirement) tools[requirement.name] = requirement.requirement;
     }
     if (packageJson?.engines?.node) tools.node = packageJson.engines.node;
 

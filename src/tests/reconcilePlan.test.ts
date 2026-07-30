@@ -12,7 +12,11 @@ vi.mock("../core/git", async (importOriginal) => {
 import { checkoutBranch, cloneRepo } from "../core/git";
 import { reconcileFromMap, type ReconcileHooks } from "../core/reconcile";
 import type { SharedRepo } from "../core/map";
-import { reconcileProgressHooks, renderReconcileFailures } from "../ui/plan";
+import {
+  reconcileProgressHooks,
+  renderPlan,
+  renderReconcileFailures,
+} from "../ui/plan";
 
 const checkoutMock = vi.mocked(checkoutBranch);
 const cloneMock = vi.mocked(cloneRepo);
@@ -77,6 +81,45 @@ describe("reconcileFromMap dry run", () => {
     const result = await reconcileFromMap(root, repos, { dryRun: true });
     expect(result.skipped).toBe(1);
     expect(result.plan.map((p) => p.relativePath)).not.toContain("apps/api");
+  });
+});
+
+describe("reconcile plan output", () => {
+  it("does not suggest re-running an empty dry-run plan", () => {
+    const logs: string[] = [];
+    vi.spyOn(console, "log").mockImplementation((message?: unknown) => {
+      logs.push(String(message ?? ""));
+    });
+
+    renderPlan({
+      placeholders: 0,
+      cloned: 0,
+      skipped: 3,
+      plan: [],
+      failures: [],
+    });
+
+    expect(logs.join("\n")).toContain("All known repositories are already present.");
+    expect(logs.join("\n")).toContain("3 repositories already present");
+    expect(logs.join("\n")).not.toContain("Re-run without --dry-run");
+  });
+
+  it("suggests applying a non-empty dry-run plan", () => {
+    const logs: string[] = [];
+    vi.spyOn(console, "log").mockImplementation((message?: unknown) => {
+      logs.push(String(message ?? ""));
+    });
+
+    renderPlan({
+      placeholders: 1,
+      cloned: 0,
+      skipped: 0,
+      plan: [{ relativePath: "apps/api", action: "placeholder" }],
+      failures: [],
+    });
+
+    expect(logs.join("\n")).toContain("Would prepare 1 repository placeholder");
+    expect(logs.join("\n")).toContain("Re-run without --dry-run");
   });
 });
 

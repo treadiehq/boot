@@ -183,8 +183,8 @@ used to be called `scan` and `restore`; those aliases still work.
 
 | Command | What it does |
 | --- | --- |
-| `setup [remote] <workspacePath>` | Link a workspace map, configure secrets and the shell hook, start background sync, and run a health check. |
-| `init <workspacePath>` | Discover a workspace and write `.bootignore` and `boot.yaml`. `--force` to overwrite. |
+| `setup [remote] [workspacePath]` | Link a workspace map, configure secrets and the shell hook, start background sync, and run a health check. |
+| `init [workspacePath]` | Discover a workspace and write `.bootignore` and `boot.yaml`. `--force` to overwrite. |
 | `update` | Update Boot. Use `--ref <tag>` to install a specific release. |
 | `export <workspacePath>` | Save this workspace's repo list to a snapshot file. Alias: `scan`. |
 | `list <manifestPath>` | Show the repos in a snapshot file. |

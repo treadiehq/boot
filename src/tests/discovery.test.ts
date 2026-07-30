@@ -53,6 +53,23 @@ describe("discoverWorkspace", () => {
     });
   });
 
+  it("preserves URL-based Corepack package manager specifiers", async () => {
+    const requirement =
+      "https://registry.npmjs.org/@yarnpkg/cli-dist/-/cli-dist-3.2.3.tgz#sha224.16a0797d1710d1fb7ec40ab5c3801b68370a612a9b66ba117ad9924b";
+    await fs.writeFile(
+      path.join(root, "apps", "api", "package.json"),
+      JSON.stringify({ packageManager: `yarn@${requirement}` }),
+    );
+
+    const discovery = await discoverWorkspace(root);
+
+    expect(discovery.definition.tools).toEqual({ yarn: requirement });
+    expect(discovery.definition.commands?.setup).toEqual({
+      run: "yarn install",
+      repository: "api",
+    });
+  });
+
   it("preserves same-named services from multiple repositories", async () => {
     const api = path.join(root, "apps", "api");
     await fs.writeFile(
