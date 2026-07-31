@@ -90,7 +90,8 @@ The JSON result includes:
 Use `--dry-run --json` to preview without changing the target. Environment
 materialization is enabled for a published workspace unless `--no-env` is
 passed. Required Boot-managed values make readiness fail when the machine has
-no matching secret key. Setup commands execute only with `--run-setup`.
+no matching secret key. Setup commands execute only with `--run-setup`, and
+service start commands only with `--start`.
 
 The older `--hydrate`, `--all`, and `--eager` map flags remain available for
 maps that do not yet publish `boot.yaml`.

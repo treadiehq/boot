@@ -161,6 +161,68 @@ describe("LocalWorkspaceProvider", () => {
     expect(withSetup.ready).toBe(true);
   });
 
+  it("starts declared services only when explicitly requested", async () => {
+    const resolved = resolveWorkspace(
+      workspaceDefinitionSchema.parse({
+        schemaVersion: 1,
+        workspace: { id: "billing", name: "Billing" },
+        repositories: {},
+        services: {
+          db: {
+            type: "custom-db",
+            check: `node -e "process.exit(require('fs').existsSync('db-ready.txt') ? 0 : 1)"`,
+            start: `node -e "require('fs').writeFileSync('db-ready.txt', 'ok')"`,
+          },
+        },
+      }),
+    );
+    const provider = new LocalWorkspaceProvider();
+    const plan = await provider.plan(root, resolved);
+    expect(plan.ready).toBe(false);
+    expect(plan.services[0]).toMatchObject({ name: "db", state: "missing" });
+
+    const withoutStart = await provider.apply(root, resolved, plan);
+    expect(withoutStart.ready).toBe(false);
+    expect(withoutStart.applied).not.toContainEqual({ kind: "service", name: "db" });
+
+    const withStart = await provider.apply(root, resolved, plan, { startServices: true });
+    expect(withStart.applied).toContainEqual({ kind: "service", name: "db" });
+    expect(withStart.plan.services[0]).toMatchObject({ name: "db", state: "available" });
+    expect(withStart.ready).toBe(true);
+
+    // Re-running is a no-op: the service is already healthy.
+    const again = await provider.apply(root, resolved, plan, { startServices: true });
+    expect(again.applied).not.toContainEqual({ kind: "service", name: "db" });
+    expect(again.ready).toBe(true);
+  });
+
+  it("reports a failed service start without aborting the realization", async () => {
+    const resolved = resolveWorkspace(
+      workspaceDefinitionSchema.parse({
+        schemaVersion: 1,
+        workspace: { id: "billing", name: "Billing" },
+        repositories: {},
+        services: {
+          db: {
+            check: `node -e "process.exit(1)"`,
+            start: `node -e "process.exit(7)"`,
+          },
+        },
+      }),
+    );
+    const provider = new LocalWorkspaceProvider();
+    const plan = await provider.plan(root, resolved);
+
+    const result = await provider.apply(root, resolved, plan, { startServices: true });
+
+    expect(result.ready).toBe(false);
+    expect(result.failures).toContainEqual({
+      kind: "service",
+      name: "db",
+      message: expect.stringContaining("exited with status 7"),
+    });
+  });
+
   it("returns a non-ready result when a setup command fails", async () => {
     const resolved = resolveWorkspace(
       workspaceDefinitionSchema.parse({

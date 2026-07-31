@@ -36,6 +36,7 @@ import {
   type EnvironmentStatus,
 } from "./requirements";
 import { keyExists, loadKey } from "./secrets";
+import { startServices } from "./startup";
 import { resolveWithinRoot } from "./pathUtils";
 import {
   quoteUserValue,
@@ -250,7 +251,7 @@ export class LocalWorkspaceProvider implements WorkspaceProvider {
         ),
       ),
       inspectTools(workspace.tools),
-      inspectServices(workspace.services),
+      inspectServices(workspace.services, { cwd: absoluteRoot }),
       bootEnvironmentNames(absoluteRoot),
     ]);
     const environment = inspectProcessEnvironment(workspace.env, bootNames);
@@ -372,6 +373,25 @@ export class LocalWorkspaceProvider implements WorkspaceProvider {
           name: "required",
           message: sanitizeUserText((error as Error).message),
         });
+      }
+    }
+
+    // Services come up after .env files exist (start commands may read them)
+    // and before setup commands (which may need the services, e.g. migrations).
+    if (options.startServices) {
+      const results = await startServices(absoluteRoot, workspace.services, {
+        onEvent: options.onServiceEvent,
+      });
+      for (const result of results) {
+        if (result.action === "started") {
+          applied.push({ kind: "service", name: result.name });
+        } else if (result.action === "failed") {
+          failures.push({
+            kind: "service",
+            name: result.name,
+            message: result.detail ?? "the service could not be started",
+          });
+        }
       }
     }
 

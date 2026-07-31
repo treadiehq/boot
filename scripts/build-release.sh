@@ -27,6 +27,13 @@ VERSION="$(node -p "require('$ROOT/package.json').version")"
 [ -n "$VERSION" ] || { echo "Could not read the package version." >&2; exit 1; }
 echo "Building boot v$VERSION with Bun $(bun --version)"
 
+# Build the launchpad and embed its assets so `boot ui` works from the binary.
+# The embed rewrites src/core/uiEmbedded.ts; always restore the stub on exit.
+echo "Building boot ui assets"
+(cd "$ROOT" && pnpm ui:build >/dev/null)
+trap 'node "$ROOT/scripts/embed-ui.mjs" --reset >/dev/null' EXIT
+node "$ROOT/scripts/embed-ui.mjs"
+
 rm -rf "$OUT"
 mkdir -p "$OUT"
 

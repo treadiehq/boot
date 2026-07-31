@@ -3,8 +3,13 @@ import { CONTEXT_VERSION, writeWorkspaceContext } from "../core/context";
 import { loadWorkspaceDefinition } from "../core/discovery";
 import { getWorkspaceProvider } from "../core/localProvider";
 import { resolveWorkspace } from "../core/workspace";
+import { recordWorkspace } from "../core/registry";
 import { logger } from "../ui/logger";
-import { renderRealizationResult, renderWorkspacePlan } from "../ui/workspace";
+import {
+  renderRealizationResult,
+  renderServiceStartEvent,
+  renderWorkspacePlan,
+} from "../ui/workspace";
 
 export interface UpOptions {
   profile?: string;
@@ -13,6 +18,8 @@ export interface UpOptions {
   json?: boolean;
   env?: boolean;
   runSetup?: boolean;
+  /** Start declared services and wait until they report healthy. */
+  start?: boolean;
 }
 
 function commandArg(value: string): string {
@@ -28,6 +35,9 @@ export async function upCommand(
   const root = path.resolve(workspacePath);
   const definition = await loadWorkspaceDefinition(root);
   const workspace = resolveWorkspace(definition, options.profile);
+  await recordWorkspace(root, workspace.name).catch(() => {
+    // Registry recording is best-effort; up must not fail because of it.
+  });
   const provider = getWorkspaceProvider(options.provider ?? "local");
   const plan = await provider.plan(root, workspace);
 
@@ -41,6 +51,9 @@ export async function upCommand(
   const result = await provider.apply(root, workspace, plan, {
     materializeEnv: options.env !== false,
     runSetup: options.runSetup,
+    startServices: options.start,
+    // In --json mode stdout must stay valid JSON, so skip live narration.
+    onServiceEvent: options.json ? undefined : renderServiceStartEvent,
   });
 
   if (result.ready) {

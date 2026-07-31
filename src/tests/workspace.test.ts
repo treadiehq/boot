@@ -126,4 +126,47 @@ describe("Workspace definition", () => {
     expect(serialized).toContain("OPENAI_API_KEY");
     expect(serialized).not.toContain("secret123");
   });
+
+  it("accepts a start command for service types with built-in checks", () => {
+    const candidate = {
+      ...definition(),
+      services: {
+        postgres: { type: "postgres", start: "docker compose up -d postgres" },
+      },
+    };
+    expect(workspaceDefinitionSchema.safeParse(candidate).success).toBe(true);
+  });
+
+  it("accepts a start command for custom services that declare a check", () => {
+    const candidate = {
+      ...definition(),
+      services: {
+        api: {
+          type: "http",
+          start: "docker compose up -d api",
+          check: "curl -fsS http://localhost:3000/health",
+          readyTimeoutSeconds: 120,
+        },
+      },
+      profiles: undefined,
+      defaults: undefined,
+    };
+    expect(workspaceDefinitionSchema.safeParse(candidate).success).toBe(true);
+  });
+
+  it("rejects a start command with no way to verify health", () => {
+    const candidate = {
+      ...definition(),
+      services: {
+        api: { type: "http", start: "docker compose up -d api" },
+      },
+      profiles: undefined,
+      defaults: undefined,
+    };
+    const result = workspaceDefinitionSchema.safeParse(candidate);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(JSON.stringify(result.error.issues)).toContain("needs a way to verify health");
+    }
+  });
 });

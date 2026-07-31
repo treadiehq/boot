@@ -1,0 +1,73 @@
+@import "tailwindcss";
+
+/* Brand tokens — aligned with useboot.co (dark zinc, system sans + mono). */
+@theme {
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+  --color-ink: #09090b;
+}
+
+html,
+body,
+#__nuxt {
+  height: 100%;
+}
+
+body {
+  background: var(--color-ink);
+  color: var(--color-zinc-300);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--color-blue-400) 30%, transparent);
+}
+
+/* Slim, dark scrollbars for the console + rail. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-zinc-800) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--color-zinc-800);
+  border-radius: 4px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@keyframes boot-blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+.boot-cursor {
+  animation: boot-blink 1.1s step-end infinite;
+}
+
+@keyframes boot-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.boot-pulse {
+  animation: boot-pulse 1.4s ease-in-out infinite;
+}

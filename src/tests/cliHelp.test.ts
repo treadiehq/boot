@@ -54,7 +54,7 @@ describe("CLI help", () => {
   it("includes a command-specific example for every executable leaf command", () => {
     const leaves = leafCommands(buildProgram());
 
-    expect(leaves).toHaveLength(39);
+    expect(leaves).toHaveLength(40);
     for (const command of leaves) {
       const help = renderHelp(command);
       expect(help, commandPath(command)).toContain("Examples:");

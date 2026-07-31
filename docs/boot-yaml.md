@@ -33,6 +33,7 @@ services:
     type: postgres
     version: "17"
     description: billing development database
+    start: docker compose up -d postgres
 
 commands:
   setup:
@@ -97,8 +98,21 @@ Version matching supports exact prefixes such as `"24"` plus common `>=`, `>`,
 ## Services
 
 Services have a type, optional version, and description. The local provider can
-verify running PostgreSQL, Redis, and Docker services. It does not install or
-start them. Unknown types remain visible as unresolved requirements.
+verify running PostgreSQL, Redis, and Docker services. Unknown types remain
+visible as unresolved requirements unless they declare a `check` command.
+
+`check` is a shell command that exits 0 when the service is healthy. It runs
+from the workspace root and takes precedence over the built-in probe for the
+service's type, so it also covers non-default ports or custom services.
+
+`start` is a shell command Boot may run to bring the service up. It executes
+only when `boot up --start` (or `boot agent --start`) is supplied *and* the
+health check fails. Boot then polls the check until the service reports
+healthy or `readyTimeoutSeconds` (default 90) elapses. Start commands must
+exit after launching — use detached forms such as `docker compose up -d`. A
+`start` command requires a way to verify health: a supported type or an
+explicit `check`. Boot delegates *how* services run to these commands; it does
+not install services or supervise processes.
 
 ## Commands
 

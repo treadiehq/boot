@@ -38,6 +38,7 @@ import { daemonInstall, daemonUninstall } from "./commands/service";
 import { setupCommand, type SetupOptions } from "./commands/setup";
 import { shellHookCommand } from "./commands/shellHook";
 import { statusCommand } from "./commands/status";
+import { uiCommand, type UiCommandOptions } from "./commands/ui";
 import { updateCommand, type UpdateOptions } from "./commands/update";
 import { upCommand, type UpOptions } from "./commands/up";
 import { watchCommand } from "./commands/watch";
@@ -123,10 +124,25 @@ export function buildProgram(): Command {
     .option("--json", "write JSON only to stdout", false)
     .option("--no-env", "check encrypted values without writing .env files")
     .option("--run-setup", "run setup commands from boot.yaml", false)
+    .option("--start", "start declared services and wait until they are healthy", false)
     .action((workspacePath: string, options: UpOptions) => upCommand(workspacePath, options))
     .addHelpText(
       "after",
-      "\nExamples:\n  boot up\n  boot up . --profile agent\n  boot up . --profile agent --dry-run --json\n  boot up . --run-setup\n",
+      "\nExamples:\n  boot up\n  boot up . --profile agent\n  boot up . --profile agent --dry-run --json\n  boot up . --run-setup --start\n",
+    );
+
+  program
+    .command("ui")
+    .description("open the local launchpad for your workspaces")
+    .argument("[workspacePath]", "workspace to register and show", ".")
+    .option("--port <port>", "port to serve on (localhost only)", (value) => Number(value))
+    .option("--no-open", "do not open a browser automatically")
+    .action((workspacePath: string, options: UiCommandOptions) =>
+      uiCommand(workspacePath, options),
+    )
+    .addHelpText(
+      "after",
+      "\nExamples:\n  boot ui\n  boot ui ~/code --port 5000\n  boot ui --no-open\n",
     );
 
   program
@@ -152,6 +168,7 @@ export function buildProgram(): Command {
     .option("--profile <profile>", "workspace profile to prepare")
     .option("--provider <provider>", "workspace provider to use", "local")
     .option("--run-setup", "run selected setup commands from boot.yaml", false)
+    .option("--start", "start declared services and wait until they are healthy", false)
     .option("--env", "write encrypted environment values (compatibility alias)")
     .option("--no-env", "check encrypted values without writing .env files")
     .option("--folder", "use a synced folder for the workspace map", false)
@@ -168,7 +185,7 @@ export function buildProgram(): Command {
     )
     .addHelpText(
       "after",
-      '\nExamples:\n  boot agent git@github.com:me/code-map.git ~/code\n  boot agent git@github.com:me/code-map.git ~/code --profile agent --run-setup\n  boot agent git@github.com:me/code-map.git ~/code --dry-run --json\n',
+      '\nExamples:\n  boot agent git@github.com:me/code-map.git ~/code\n  boot agent git@github.com:me/code-map.git ~/code --profile agent --run-setup --start\n  boot agent git@github.com:me/code-map.git ~/code --dry-run --json\n',
     );
 
   program.commandsGroup("Other commands:");

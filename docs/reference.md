@@ -18,7 +18,9 @@ Options:
 - `--dry-run` returns a side-effect-free plan;
 - `--json` writes only structured JSON to stdout;
 - `--no-env` avoids writing plaintext `.env` files;
-- `--run-setup` explicitly executes setup commands.
+- `--run-setup` explicitly executes setup commands;
+- `--start` runs declared service start commands and waits until each service
+  reports healthy.
 
 `boot agent <map-remote> [path]`
 
@@ -31,6 +33,7 @@ Options:
 - `--profile <name>` selects another published profile;
 - `--provider local` selects the workspace provider;
 - `--run-setup` explicitly executes selected setup commands;
+- `--start` runs declared service start commands and waits for health;
 - `--no-env` validates encrypted values without writing `.env` files;
 - `--folder` treats the source as an already-synchronized folder;
 - `--dry-run` previews without changing the requested workspace;
@@ -43,6 +46,18 @@ available for maps that do not yet publish `boot.yaml`.
 
 Inspects resolved context and current state. `--profile`, `--provider`, and
 `--json` are supported.
+
+`boot ui [path]`
+
+Serves the local launchpad on 127.0.0.1 and opens a browser: registered
+workspaces, per-profile readiness, and one-click prepare/launch backed by the
+same core as `boot up`. The given path is registered when it contains
+`boot.yaml`; `boot init` and `boot up` also register workspaces.
+
+Options:
+
+- `--port <port>` selects the port (default 4400);
+- `--no-open` skips launching a browser.
 
 `boot save [path]`
 

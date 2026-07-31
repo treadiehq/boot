@@ -13,5 +13,11 @@ launch-assets
 public/boot-soundtrack.wav
 out/
 
+# boot ui build artifacts (`pnpm ui:build`)
+ui/.nuxt/
+ui/.output/
+ui/.data/
+ui/dist
+
 # Remotion recognizes this entry-point directory as a bundle path.
 video

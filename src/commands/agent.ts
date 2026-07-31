@@ -10,6 +10,8 @@ import { logger } from "../ui/logger";
 
 export interface AgentOptions extends BootstrapOptions {
   json?: boolean;
+  /** Commander's `--start` flag; mapped to `startServices` for the core. */
+  start?: boolean;
 }
 
 function commandArg(value: string): string {
@@ -28,6 +30,7 @@ function retryCommand(
   if (options.profile) args.push("--profile", commandArg(options.profile));
   if (options.provider) args.push("--provider", commandArg(options.provider));
   if (options.runSetup) args.push("--run-setup");
+  if (options.start || options.startServices) args.push("--start");
   if (options.env === true) args.push("--env");
   if (options.env === false) args.push("--no-env");
   if (options.folder) args.push("--folder");
@@ -53,7 +56,10 @@ export async function agentCommand(
 ): Promise<void> {
   await ensureGitAvailable();
   const root = path.resolve(workspacePath);
-  const result = await bootstrapAgentWorkspace(remote, root, options);
+  const result = await bootstrapAgentWorkspace(remote, root, {
+    ...options,
+    startServices: options.startServices ?? options.start,
+  });
 
   if (options.json) {
     logger.info(JSON.stringify(bootstrapOutput(result), null, 2));

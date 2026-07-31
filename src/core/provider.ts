@@ -2,6 +2,7 @@ import type {
   EnvironmentStatus,
   RequirementStatus,
 } from "./requirements";
+import type { ServiceStartEvent } from "./startup";
 import type { ResolvedWorkspace } from "./workspace";
 
 export type RepositoryState = "hydrated" | "placeholder" | "missing" | "conflict";
@@ -49,12 +50,18 @@ export interface RealizationPlan {
 export interface RealizationOptions {
   materializeEnv?: boolean;
   runSetup?: boolean;
+  /** Run declared service start commands and wait until they report healthy. */
+  startServices?: boolean;
+  /** Progress callback for service startup, so a UI can narrate long waits. */
+  onServiceEvent?: (event: ServiceStartEvent) => void;
 }
+
+export type RealizationItemKind = "repository" | "environment" | "service" | "command";
 
 export interface RealizationResult {
   plan: RealizationPlan;
-  applied: Array<{ kind: "repository" | "environment" | "command"; name: string }>;
-  failures: Array<{ kind: "repository" | "environment" | "command"; name: string; message: string }>;
+  applied: Array<{ kind: RealizationItemKind; name: string }>;
+  failures: Array<{ kind: RealizationItemKind; name: string; message: string }>;
   ready: boolean;
 }
 

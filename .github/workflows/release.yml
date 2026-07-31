@@ -48,6 +48,20 @@ jobs:
         # a failure to build it here is harmless.
         run: bun install
 
+      - name: Setup Node
+        # nuxi and scripts/embed-ui.mjs run under Node.
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build and embed launchpad assets
+        # Rewrites src/core/uiEmbedded.ts so the binary serves `boot ui`
+        # without files on disk (same as scripts/build-release.sh locally).
+        shell: bash
+        run: |
+          bun run ui:build
+          node scripts/embed-ui.mjs
+
       - name: Build binary
         # macOS: Bun can embed a truncated LC_CODE_SIGNATURE that the kernel rejects,
         # so skip Bun's signing and ad-hoc sign in the next step instead.

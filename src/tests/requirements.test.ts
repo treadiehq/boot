@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const execaMock = vi.hoisted(() => vi.fn());
+const execaCommandMock = vi.hoisted(() => vi.fn());
 
-vi.mock("execa", () => ({ execa: execaMock }));
+vi.mock("execa", () => ({ execa: execaMock, execaCommand: execaCommandMock }));
 
 import {
   inspectProcessEnvironment,
+  inspectService,
   inspectTools,
   versionSatisfies,
 } from "../core/requirements";
@@ -13,6 +15,7 @@ import {
 describe("requirement inspection", () => {
   beforeEach(() => {
     execaMock.mockReset();
+    execaCommandMock.mockReset();
   });
 
   it("matches common runtime version expressions", () => {
@@ -70,5 +73,47 @@ describe("requirement inspection", () => {
         detail: '"pnpm" was not found on PATH; install it, then retry',
       },
     ]);
+  });
+
+  it("prefers a declared check command over the built-in service probe", async () => {
+    execaCommandMock.mockResolvedValue({ exitCode: 0, stdout: "accepting connections", stderr: "" });
+
+    await expect(
+      inspectService(
+        "db",
+        { type: "postgres", check: "pg_isready -p 5433" },
+        { cwd: "/workspace" },
+      ),
+    ).resolves.toEqual({
+      name: "db",
+      required: undefined,
+      state: "available",
+      observed: "accepting connections",
+    });
+    expect(execaCommandMock).toHaveBeenCalledWith(
+      "pg_isready -p 5433",
+      expect.objectContaining({ cwd: "/workspace", shell: true }),
+    );
+    expect(execaMock).not.toHaveBeenCalled();
+  });
+
+  it("reports a failing check command as a missing service", async () => {
+    execaCommandMock.mockResolvedValue({ exitCode: 1, stdout: "", stderr: "no response" });
+
+    await expect(
+      inspectService("queue", { check: "nats-cli ping" }),
+    ).resolves.toMatchObject({
+      name: "queue",
+      state: "missing",
+      detail: expect.stringContaining('"nats-cli ping"'),
+    });
+  });
+
+  it("suggests a check command for unsupported service types", async () => {
+    await expect(inspectService("search", { type: "opensearch" })).resolves.toMatchObject({
+      name: "search",
+      state: "unsupported",
+      detail: expect.stringContaining('add a "check" command'),
+    });
   });
 });

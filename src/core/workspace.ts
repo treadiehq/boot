@@ -34,11 +34,29 @@ export const repositoryDefinitionSchema = z
 
 export type RepositoryDefinition = z.infer<typeof repositoryDefinitionSchema>;
 
+/** Service types the local provider can verify without a custom `check` command. */
+export const SERVICE_TYPES_WITH_BUILT_IN_CHECKS = [
+  "postgres",
+  "postgresql",
+  "redis",
+  "docker",
+] as const;
+
+export function hasBuiltInServiceCheck(type: string): boolean {
+  return (SERVICE_TYPES_WITH_BUILT_IN_CHECKS as readonly string[]).includes(type);
+}
+
 export const serviceDefinitionSchema = z
   .object({
     type: identifierSchema.optional(),
     version: z.string().min(1).optional(),
     description: z.string().min(1).optional(),
+    /** Shell command that brings the service up; must exit after launching it. */
+    start: z.string().min(1).optional(),
+    /** Shell health probe (exit 0 = healthy); overrides the built-in check for `type`. */
+    check: z.string().min(1).optional(),
+    /** How long `--start` waits for the service to report healthy (default 90). */
+    readyTimeoutSeconds: z.number().int().positive().max(3600).optional(),
   })
   .strict();
 
@@ -195,6 +213,19 @@ export const workspaceDefinitionSchema = z
       validateSelection(profileId, "services", profile.services, serviceIds);
       validateSelection(profileId, "commands", profile.commands, commandIds);
       validateSelection(profileId, "env", profile.env, envIds);
+    }
+
+    for (const [serviceId, service] of Object.entries(definition.services ?? {})) {
+      const type = service.type ?? serviceId;
+      if (service.start && !service.check && !hasBuiltInServiceCheck(type)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["services", serviceId, "start"],
+          message:
+            `needs a way to verify health: add a "check" command or use a service type ` +
+            `with built-in checks (${SERVICE_TYPES_WITH_BUILT_IN_CHECKS.join(", ")})`,
+        });
+      }
     }
 
     for (const [commandId, command] of Object.entries(definition.commands ?? {})) {

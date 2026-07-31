@@ -36,10 +36,15 @@ boot inspect --json
 commit it with your code.
 
 `boot up` prepares the repositories your agent needs and checks the required
-tools, services, and environment variables.
+tools, services, and environment variables. Add `--start` to run the service
+start commands declared in `boot.yaml` and wait until each service reports
+healthy.
 
 `boot inspect --json` gives the agent a clear summary of the workspace without
 including secret values.
+
+`boot ui` opens a local web app served by the CLI itself (127.0.0.1 only) that 
+lists your workspaces and prepares and launches them with one click.
 
 ## Start a fresh cloud agent
 
@@ -69,11 +74,13 @@ must have the workspace key provisioned before bootstrap.
 - Repository paths, roles, branches, and clone URLs
 - Project commands and constraints
 - Required tools, services, and environment variables
+- Starting declared services and verifying they are healthy (`--start`)
 - Different setups for local work, coding agents, CI, and review
 - One-command, profile-scoped setup on fresh cloud machines
+- A local launchpad (`boot ui`) to prepare and launch workspaces in one click
 
-Boot prepares repositories and checks requirements. It does not replace Git,
-install tools, or start services.
+Boot prepares repositories, checks requirements, and starts the services you
+declare. It does not replace Git, install tools, or supervise processes.
 
 ## Learn more
 
@@ -92,6 +99,10 @@ pnpm lint
 pnpm test:run
 pnpm qa
 ```
+
+The launchpad frontend lives in `ui/` (Nuxt + Tailwind, dev-only toolchain).
+Build it once with `pnpm ui:build`; `boot ui` then serves it locally. Release
+binaries embed the built assets automatically.
 
 ## License
 

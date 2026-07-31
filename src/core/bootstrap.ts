@@ -37,6 +37,8 @@ export interface BootstrapOptions {
   dryRun?: boolean;
   env?: boolean;
   runSetup?: boolean;
+  /** Run declared service start commands and wait until they report healthy. */
+  startServices?: boolean;
   eager?: boolean;
   hydrate?: string[];
   all?: boolean;
@@ -44,7 +46,7 @@ export interface BootstrapOptions {
 }
 
 export interface BootstrapFailure {
-  kind: "repository" | "environment" | "command";
+  kind: "repository" | "environment" | "service" | "command";
   name: string;
   message: string;
 }
@@ -203,6 +205,7 @@ async function realizePublishedWorkspace(
   const realization = await provider.apply(root, workspace, plan, {
     materializeEnv: options.env !== false,
     runSetup: options.runSetup,
+    startServices: options.startServices,
   });
   if (realization.ready) {
     await writeWorkspaceContext(root, {

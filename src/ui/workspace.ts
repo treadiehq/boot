@@ -4,6 +4,7 @@ import type {
   RepositoryPlan,
 } from "../core/provider";
 import type { RequirementStatus } from "../core/requirements";
+import type { ServiceStartEvent } from "../core/startup";
 import { colors, logger } from "./logger";
 
 function repositoryLabel(repository: RepositoryPlan): string {
@@ -106,6 +107,27 @@ export function renderWorkspacePlan(plan: RealizationPlan, dryRun = false): void
   if (dryRun) {
     logger.info();
     logger.next("Re-run without --dry-run to prepare this workspace.");
+  }
+}
+
+/** Narrate service startup as it happens; failures are reported with the result. */
+export function renderServiceStartEvent(event: ServiceStartEvent): void {
+  if (event.phase === "starting") {
+    logger.info(
+      `${colors.dim("•")} starting service ${colors.cyan(event.service)}${
+        event.detail ? colors.dim(` — ${event.detail}`) : ""
+      }`,
+    );
+  } else if (event.phase === "waiting") {
+    logger.info(colors.dim(`  waiting for ${event.service} to report healthy…`));
+  } else if (event.phase === "ready") {
+    logger.success(
+      `service ${colors.cyan(event.service)} is healthy${
+        event.detail ? colors.dim(` (${event.detail})`) : ""
+      }`,
+    );
+  } else if (event.phase === "skipped" && event.detail) {
+    logger.info(colors.dim(`  skipped ${event.service}: ${event.detail}`));
   }
 }
 

@@ -1,9 +1,9 @@
-import { execa } from "execa";
+import { execa, execaCommand } from "execa";
 import type {
   ResolvedEnvironmentRequirement,
   ServiceDefinition,
 } from "./workspace";
-import { sanitizeUserText } from "./userErrors";
+import { quoteUserValue, sanitizeUserText } from "./userErrors";
 
 export type RequirementState = "available" | "missing" | "mismatch" | "unsupported";
 
@@ -195,26 +195,78 @@ async function inspectDocker(name: string, required?: string): Promise<Requireme
   };
 }
 
+export interface ServiceInspectOptions {
+  /** Working directory for custom `check` commands (usually the workspace root). */
+  cwd?: string;
+}
+
+/** Run a declared health-check command; exit code 0 means the service is healthy. */
+async function runCheckCommand(command: string, cwd?: string): Promise<CommandResult> {
+  try {
+    const result = await execaCommand(command, {
+      cwd,
+      shell: true,
+      reject: false,
+      timeout: 10_000,
+      env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+    });
+    return {
+      ok: result.exitCode === 0,
+      output: sanitizeUserText(result.stdout || result.stderr),
+      notFound: false,
+    };
+  } catch {
+    return { ok: false, output: "", notFound: false };
+  }
+}
+
+/**
+ * Check one declared service. A custom `check` command takes precedence over
+ * the built-in probe for the service's type.
+ */
+export async function inspectService(
+  name: string,
+  definition: ServiceDefinition,
+  options: ServiceInspectOptions = {},
+): Promise<RequirementStatus> {
+  if (definition.check) {
+    const result = await runCheckCommand(definition.check, options.cwd);
+    if (!result.ok) {
+      return {
+        name,
+        required: definition.version,
+        state: "missing",
+        detail: `health check failed; run ${quoteUserValue(definition.check)} for details, fix the reported problem, then retry`,
+      };
+    }
+    return {
+      name,
+      required: definition.version,
+      state: "available",
+      ...(result.output ? { observed: result.output } : {}),
+    };
+  }
+  const type = definition.type ?? name;
+  if (type === "postgres" || type === "postgresql") {
+    return inspectPostgres(name, definition.version);
+  }
+  if (type === "redis") return inspectRedis(name, definition.version);
+  if (type === "docker") return inspectDocker(name, definition.version);
+  return {
+    name,
+    required: definition.version,
+    state: "unsupported",
+    detail: `automatic checks are not available for service type "${type}"; add a "check" command or verify it manually`,
+  };
+}
+
 export async function inspectServices(
   requirements: Record<string, ServiceDefinition>,
+  options: ServiceInspectOptions = {},
 ): Promise<RequirementStatus[]> {
   const statuses: RequirementStatus[] = [];
   for (const [name, definition] of Object.entries(requirements)) {
-    const type = definition.type ?? name;
-    if (type === "postgres" || type === "postgresql") {
-      statuses.push(await inspectPostgres(name, definition.version));
-    } else if (type === "redis") {
-      statuses.push(await inspectRedis(name, definition.version));
-    } else if (type === "docker") {
-      statuses.push(await inspectDocker(name, definition.version));
-    } else {
-      statuses.push({
-        name,
-        required: definition.version,
-        state: "unsupported",
-        detail: `automatic checks are not available for service type "${type}"; verify it manually`,
-      });
-    }
+    statuses.push(await inspectService(name, definition, options));
   }
   return statuses;
 }

@@ -6,6 +6,7 @@ import { CONFIG_FILE_NAME } from "../core/config";
 import { discoverWorkspace } from "../core/discovery";
 import { writeFileAtomic } from "../core/files";
 import { IGNORE_FILE_NAME } from "../core/ignore";
+import { recordWorkspace } from "../core/registry";
 import { colors, logger } from "../ui/logger";
 
 export interface InitOptions {
@@ -112,6 +113,9 @@ export async function initCommand(workspacePath: string, options: InitOptions = 
 
   await write(IGNORE_FILE_NAME, DEFAULT_IGNORE_FILE);
   await write(CONFIG_FILE_NAME, configContents);
+  await recordWorkspace(root, path.basename(root)).catch(() => {
+    // Registry recording is best-effort; init must not fail because of it.
+  });
 
   logger.info();
   logger.info(
