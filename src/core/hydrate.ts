@@ -140,7 +140,9 @@ export async function hydratePlaceholder(
           await fs.rename(backupPath, repoDir).catch(() => undefined);
           throw error;
         }
-        await fs.rm(backupPath, { recursive: true, force: true });
+        await fs
+          .rm(backupPath, { recursive: true, force: true })
+          .catch(() => undefined);
       } finally {
         await fs.rm(stageRoot, { recursive: true, force: true }).catch(() => undefined);
       }

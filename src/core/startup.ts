@@ -56,14 +56,14 @@ async function startService(
     emit({ service: name, phase: "skipped", detail });
     return { name, action: "skipped", status: initial, detail };
   }
-  if (!definition.start) {
-    const detail = "not running, and boot.yaml declares no start command";
-    emit({ service: name, phase: "skipped", detail });
-    return { name, action: "skipped", status: initial, detail };
-  }
   if (initial.state === "unsupported") {
     // Schema validation prevents `start` without a health check; degrade safely.
     const detail = initial.detail ?? "no health check is available for this service";
+    emit({ service: name, phase: "skipped", detail });
+    return { name, action: "skipped", status: initial, detail };
+  }
+  if (!definition.start) {
+    const detail = "not running, and boot.yaml declares no start command";
     emit({ service: name, phase: "skipped", detail });
     return { name, action: "skipped", status: initial, detail };
   }
@@ -100,6 +100,13 @@ async function startService(
     if (status.state === "available") {
       emit({ service: name, phase: "ready" });
       return { name, action: "started", status };
+    }
+    if (status.state === "mismatch" || status.state === "unsupported") {
+      const detail =
+        status.detail ??
+        "the service started, but its running version could not satisfy the requirement";
+      emit({ service: name, phase: "failed", detail });
+      return { name, action: "failed", status, detail };
     }
     if (Date.now() >= deadline) {
       const detail =

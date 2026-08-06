@@ -4,7 +4,12 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
-import { listPlaceholders, placeholderForEvent, startWatcher } from "../core/watcher";
+import {
+  listPlaceholders,
+  placeholderForEvent,
+  startWatcher,
+  validateWatchDebounce,
+} from "../core/watcher";
 import { buildPlaceholderMeta, writePlaceholder } from "../core/placeholder";
 
 function gitUsable(): boolean {
@@ -60,6 +65,23 @@ async function poll(predicate: () => boolean, timeoutMs = 8000, stepMs = 100): P
   }
   return predicate();
 }
+
+describe("validateWatchDebounce", () => {
+  it("accepts zero and rejects partial or unsafe timer values", async () => {
+    expect(validateWatchDebounce("0")).toBe(0);
+    expect(validateWatchDebounce(2_147_483_647)).toBe(2_147_483_647);
+    for (const value of ["3OO", "250ms", "1.5", -1, 2_147_483_648, Number.NaN]) {
+      expect(() => validateWatchDebounce(value)).toThrow(
+        "Watch debounce must be a whole number from 0 to 2147483647 milliseconds.",
+      );
+    }
+    await expect(
+      startWatcher(root, {}, { debounceMs: Number.NaN }),
+    ).rejects.toThrow(
+      "Watch debounce must be a whole number from 0 to 2147483647 milliseconds.",
+    );
+  });
+});
 
 describe("placeholderForEvent", () => {
   it("matches a path inside a placeholder", () => {

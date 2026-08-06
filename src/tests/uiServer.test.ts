@@ -4,7 +4,11 @@ import { request as httpRequest } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { recordWorkspace } from "../core/registry";
-import { startUiServer, type RunningUiServer } from "../core/uiServer";
+import {
+  startUiServer,
+  validateUiPort,
+  type RunningUiServer,
+} from "../core/uiServer";
 
 let home: string;
 let workspace: string;
@@ -49,6 +53,16 @@ afterEach(async () => {
 });
 
 describe("boot ui server", () => {
+  it("strictly validates CLI and programmatic port values", async () => {
+    expect(validateUiPort("0")).toBe(0);
+    expect(() => validateUiPort("8O88")).toThrow(
+      "UI port must be a whole number from 0 to 65535.",
+    );
+    await expect(
+      startUiServer({ port: Number.NaN, distDir: dist }),
+    ).rejects.toThrow("UI port must be a whole number from 0 to 65535.");
+  });
+
   it("lists registered workspaces with their profiles", async () => {
     const response = await fetch(`${running!.url}/api/workspaces`);
     expect(response.status).toBe(200);

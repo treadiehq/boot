@@ -97,6 +97,139 @@ describe("requirement inspection", () => {
     expect(execaMock).not.toHaveBeenCalled();
   });
 
+  it("checks the running PostgreSQL server version instead of the client version", async () => {
+    execaMock
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: "localhost:5432 - accepting connections",
+        stderr: "",
+      })
+      .mockResolvedValueOnce({ exitCode: 0, stdout: "15.8", stderr: "" });
+
+    await expect(
+      inspectService("db", { type: "postgres", version: ">=16" }),
+    ).resolves.toEqual({
+      name: "db",
+      required: ">=16",
+      state: "mismatch",
+      observed: "15.8",
+    });
+    expect(execaMock).toHaveBeenNthCalledWith(
+      2,
+      "psql",
+      [
+        "--no-psqlrc",
+        "--tuples-only",
+        "--no-align",
+        "--command",
+        "SHOW server_version",
+      ],
+      expect.any(Object),
+    );
+  });
+
+  it("checks the running Redis server version instead of a local server binary", async () => {
+    execaMock
+      .mockResolvedValueOnce({ exitCode: 0, stdout: "PONG", stderr: "" })
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: "# Server\nredis_version:6.2.14\nredis_mode:standalone",
+        stderr: "",
+      });
+
+    await expect(
+      inspectService("cache", { type: "redis", version: ">=7" }),
+    ).resolves.toEqual({
+      name: "cache",
+      required: ">=7",
+      state: "mismatch",
+      observed: "6.2.14",
+    });
+    expect(execaMock).toHaveBeenNthCalledWith(
+      2,
+      "redis-cli",
+      ["--raw", "INFO", "server"],
+      expect.any(Object),
+    );
+  });
+
+  it("does not claim availability when a running server version cannot be queried", async () => {
+    execaMock
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: "localhost:5432 - accepting connections",
+        stderr: "",
+      })
+      .mockResolvedValueOnce({
+        exitCode: 2,
+        stdout: "",
+        stderr: "password authentication failed",
+      });
+
+    await expect(
+      inspectService("db", { type: "postgres", version: ">=16" }),
+    ).resolves.toMatchObject({
+      name: "db",
+      required: ">=16",
+      state: "unsupported",
+      detail: expect.stringContaining("could not verify its server version"),
+    });
+  });
+
+  it("requires an explicit version check when a custom health check overrides probes", async () => {
+    execaCommandMock.mockResolvedValue({
+      exitCode: 0,
+      stdout: "accepting connections",
+      stderr: "",
+    });
+
+    await expect(
+      inspectService("db", {
+        type: "postgres",
+        check: "pg_isready -p 5433",
+        version: ">=16",
+      }),
+    ).resolves.toMatchObject({
+      name: "db",
+      required: ">=16",
+      state: "unsupported",
+      detail: expect.stringContaining("add a `versionCheck` command"),
+    });
+  });
+
+  it("validates custom version check output separately from health output", async () => {
+    execaCommandMock
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: "accepting connections",
+        stderr: "",
+      })
+      .mockResolvedValueOnce({ exitCode: 0, stdout: "15.8", stderr: "" });
+
+    await expect(
+      inspectService(
+        "db",
+        {
+          type: "postgres",
+          check: "pg_isready -p 5433",
+          version: ">=16",
+          versionCheck: "psql -p 5433 -tAX -c 'SHOW server_version'",
+        },
+        { cwd: "/workspace" },
+      ),
+    ).resolves.toEqual({
+      name: "db",
+      required: ">=16",
+      state: "mismatch",
+      observed: "15.8",
+    });
+    expect(execaCommandMock).toHaveBeenNthCalledWith(
+      2,
+      "psql -p 5433 -tAX -c 'SHOW server_version'",
+      expect.objectContaining({ cwd: "/workspace", shell: true }),
+    );
+  });
+
   it("reports a failing check command as a missing service", async () => {
     execaCommandMock.mockResolvedValue({ exitCode: 1, stdout: "", stderr: "no response" });
 

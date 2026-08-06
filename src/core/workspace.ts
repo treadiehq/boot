@@ -55,6 +55,8 @@ export const serviceDefinitionSchema = z
     start: z.string().min(1).optional(),
     /** Shell health probe (exit 0 = healthy); overrides the built-in check for `type`. */
     check: z.string().min(1).optional(),
+    /** Shell probe that prints the running service version to stdout. */
+    versionCheck: z.string().min(1).optional(),
     /** How long `--start` waits for the service to report healthy (default 90). */
     readyTimeoutSeconds: z.number().int().positive().max(3600).optional(),
   })

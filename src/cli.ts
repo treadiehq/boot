@@ -43,6 +43,8 @@ import { updateCommand, type UpdateOptions } from "./commands/update";
 import { upCommand, type UpOptions } from "./commands/up";
 import { watchCommand } from "./commands/watch";
 import { validateDaemonInterval } from "./core/service";
+import { validateUiPort } from "./core/uiServer";
+import { validateWatchDebounce } from "./core/watcher";
 import { logger } from "./ui/logger";
 
 export const DEFAULT_MANIFEST_NAME = "boot-workspace.json";
@@ -72,6 +74,22 @@ const VERSION = resolveVersion();
 function parseDaemonInterval(value: string): number {
   try {
     return validateDaemonInterval(Number(value));
+  } catch (error) {
+    throw new InvalidArgumentError((error as Error).message);
+  }
+}
+
+function parseUiPort(value: string): number {
+  try {
+    return validateUiPort(value);
+  } catch (error) {
+    throw new InvalidArgumentError((error as Error).message);
+  }
+}
+
+function parseWatchDebounce(value: string): number {
+  try {
+    return validateWatchDebounce(value);
   } catch (error) {
     throw new InvalidArgumentError((error as Error).message);
   }
@@ -135,7 +153,7 @@ export function buildProgram(): Command {
     .command("ui")
     .description("open the local launchpad for your workspaces")
     .argument("[workspacePath]", "workspace to register and show", ".")
-    .option("--port <port>", "port to serve on (localhost only)", (value) => Number(value))
+    .option("--port <port>", "port to serve on (localhost only)", parseUiPort)
     .option("--no-open", "do not open a browser automatically")
     .action((workspacePath: string, options: UiCommandOptions) =>
       uiCommand(workspacePath, options),
@@ -285,9 +303,7 @@ export function buildProgram(): Command {
     .command("watch")
     .description("clone placeholder repos after writes; runs in the foreground")
     .argument("[workspacePath]", "workspace to watch", ".")
-    .option("--debounce <ms>", "milliseconds to wait after a write", (v) =>
-      Number.parseInt(v, 10),
-    )
+    .option("--debounce <ms>", "milliseconds to wait after a write", parseWatchDebounce)
     .action((workspacePath: string, options: { debounce?: number }) =>
       watchCommand(workspacePath, { debounce: options.debounce }),
     )

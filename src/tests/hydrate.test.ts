@@ -266,6 +266,43 @@ describe("hydrateCommand", () => {
     ).toEqual([]);
   });
 
+  it("continues branch checkout when backup cleanup fails", async () => {
+    const repoDir = await makePlaceholder(
+      "apps/locked-backup",
+      "git@example.com:locked-backup.git",
+    );
+    cloneMock.mockImplementation(async (_url: string, target: string) => {
+      await fs.mkdir(path.join(target, ".git"), { recursive: true });
+      await fs.writeFile(path.join(target, "README.md"), "# locked backup\n");
+    });
+    const originalRm = fs.rm.bind(fs);
+    const rmSpy = vi.spyOn(fs, "rm").mockImplementation(async (target, options) => {
+      if (String(target).startsWith(`${repoDir}.boot-backup-`)) {
+        throw Object.assign(new Error("permission denied"), { code: "EACCES" });
+      }
+      await originalRm(target, options);
+    });
+
+    let outcome;
+    try {
+      outcome = await hydratePlaceholder(repoDir);
+    } finally {
+      rmSpy.mockRestore();
+    }
+
+    expect(outcome).toBe("hydrated");
+    expect(checkoutMock).toHaveBeenCalledWith(repoDir, "main");
+    expect(await fs.readFile(path.join(repoDir, "README.md"), "utf8")).toBe(
+      "# locked backup\n",
+    );
+    expect((await readPlaceholder(repoDir))?.hydrateStatus).toBe("hydrated");
+    expect(
+      (await fs.readdir(path.dirname(repoDir))).filter((name) =>
+        name.startsWith("locked-backup.boot-backup-"),
+      ),
+    ).toHaveLength(1);
+  });
+
   it("leaves the placeholder intact when cloning fails", async () => {
     const repoDir = await makePlaceholder("apps/flaky", "git@example.com:flaky.git");
     cloneMock.mockRejectedValue(new Error("network down"));

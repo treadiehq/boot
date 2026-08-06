@@ -130,7 +130,25 @@ export async function inspectTools(
   return statuses;
 }
 
-async function inspectPostgres(name: string, required?: string): Promise<RequirementStatus> {
+function observedVersionStatus(
+  name: string,
+  required: string,
+  observed: string,
+): RequirementStatus {
+  return {
+    name,
+    required,
+    observed,
+    state: versionSatisfies(observed, required) ? "available" : "mismatch",
+  };
+}
+
+async function inspectPostgres(
+  name: string,
+  required?: string,
+  versionCheck?: string,
+  cwd?: string,
+): Promise<RequirementStatus> {
   const ready = await runProbe("pg_isready", []);
   if (!ready.ok) {
     return {
@@ -142,20 +160,38 @@ async function inspectPostgres(name: string, required?: string): Promise<Require
         : "PostgreSQL did not report ready; run `pg_isready` for details, fix the reported problem, then retry",
     };
   }
-  const version = await runProbe("psql", ["--version"]);
-  const state =
-    required && version.ok && !versionSatisfies(version.output, required)
-      ? "mismatch"
-      : "available";
-  return {
-    name,
-    required,
-    state,
-    observed: version.output || ready.output,
-  };
+  if (!required) {
+    return { name, required, state: "available", observed: ready.output };
+  }
+  if (versionCheck) {
+    return inspectDeclaredVersion(name, required, versionCheck, cwd, ready.output);
+  }
+  const version = await runProbe("psql", [
+    "--no-psqlrc",
+    "--tuples-only",
+    "--no-align",
+    "--command",
+    "SHOW server_version",
+  ]);
+  if (!version.ok || !version.output) {
+    return {
+      name,
+      required,
+      state: "unsupported",
+      ...(ready.output ? { observed: ready.output } : {}),
+      detail:
+        "PostgreSQL is ready, but Boot could not verify its server version; ensure `psql` can connect to the same server or add a `versionCheck` command",
+    };
+  }
+  return observedVersionStatus(name, required, version.output);
 }
 
-async function inspectRedis(name: string, required?: string): Promise<RequirementStatus> {
+async function inspectRedis(
+  name: string,
+  required?: string,
+  versionCheck?: string,
+  cwd?: string,
+): Promise<RequirementStatus> {
   const ready = await runProbe("redis-cli", ["ping"]);
   if (!ready.ok || ready.output.toUpperCase() !== "PONG") {
     return {
@@ -167,15 +203,31 @@ async function inspectRedis(name: string, required?: string): Promise<Requiremen
         : "Redis did not return PONG; run `redis-cli ping` for details, fix the reported problem, then retry",
     };
   }
-  const version = await runProbe("redis-server", ["--version"]);
-  const state =
-    required && version.ok && !versionSatisfies(version.output, required)
-      ? "mismatch"
-      : "available";
-  return { name, required, state, observed: version.output || "PONG" };
+  if (!required) return { name, required, state: "available", observed: "PONG" };
+  if (versionCheck) {
+    return inspectDeclaredVersion(name, required, versionCheck, cwd, "PONG");
+  }
+  const info = await runProbe("redis-cli", ["--raw", "INFO", "server"]);
+  const observed = info.output.match(/\bredis_version:([^\s]+)/i)?.[1];
+  if (!info.ok || !observed) {
+    return {
+      name,
+      required,
+      state: "unsupported",
+      observed: "PONG",
+      detail:
+        "Redis is ready, but Boot could not verify its server version; ensure `redis-cli INFO server` can query the same server or add a `versionCheck` command",
+    };
+  }
+  return observedVersionStatus(name, required, observed);
 }
 
-async function inspectDocker(name: string, required?: string): Promise<RequirementStatus> {
+async function inspectDocker(
+  name: string,
+  required?: string,
+  versionCheck?: string,
+  cwd?: string,
+): Promise<RequirementStatus> {
   const result = await runProbe("docker", ["info", "--format", "{{.ServerVersion}}"]);
   if (!result.ok) {
     return {
@@ -187,12 +239,11 @@ async function inspectDocker(name: string, required?: string): Promise<Requireme
         : "Docker did not report server information; run `docker info` for details, fix the reported problem, then retry",
     };
   }
-  return {
-    name,
-    required,
-    observed: result.output,
-    state: required && !versionSatisfies(result.output, required) ? "mismatch" : "available",
-  };
+  if (required && versionCheck) {
+    return inspectDeclaredVersion(name, required, versionCheck, cwd, result.output);
+  }
+  if (required) return observedVersionStatus(name, required, result.output);
+  return { name, required, observed: result.output, state: "available" };
 }
 
 export interface ServiceInspectOptions {
@@ -220,6 +271,28 @@ async function runCheckCommand(command: string, cwd?: string): Promise<CommandRe
   }
 }
 
+async function inspectDeclaredVersion(
+  name: string,
+  required: string,
+  command: string,
+  cwd?: string,
+  healthObserved?: string,
+): Promise<RequirementStatus> {
+  const result = await runCheckCommand(command, cwd);
+  if (!result.ok || !result.output) {
+    return {
+      name,
+      required,
+      state: "unsupported",
+      ...(healthObserved ? { observed: healthObserved } : {}),
+      detail:
+        `the service is healthy, but its version could not be verified; run ` +
+        `${quoteUserValue(command)} for details, fix the reported problem, then retry`,
+    };
+  }
+  return observedVersionStatus(name, required, result.output);
+}
+
 /**
  * Check one declared service. A custom `check` command takes precedence over
  * the built-in probe for the service's type.
@@ -239,6 +312,25 @@ export async function inspectService(
         detail: `health check failed; run ${quoteUserValue(definition.check)} for details, fix the reported problem, then retry`,
       };
     }
+    if (definition.version) {
+      if (!definition.versionCheck) {
+        return {
+          name,
+          required: definition.version,
+          state: "unsupported",
+          ...(result.output ? { observed: result.output } : {}),
+          detail:
+            "health check passed, but the running service version was not verified; add a `versionCheck` command that prints the version to stdout",
+        };
+      }
+      return inspectDeclaredVersion(
+        name,
+        definition.version,
+        definition.versionCheck,
+        options.cwd,
+        result.output,
+      );
+    }
     return {
       name,
       required: definition.version,
@@ -248,10 +340,29 @@ export async function inspectService(
   }
   const type = definition.type ?? name;
   if (type === "postgres" || type === "postgresql") {
-    return inspectPostgres(name, definition.version);
+    return inspectPostgres(
+      name,
+      definition.version,
+      definition.versionCheck,
+      options.cwd,
+    );
   }
-  if (type === "redis") return inspectRedis(name, definition.version);
-  if (type === "docker") return inspectDocker(name, definition.version);
+  if (type === "redis") {
+    return inspectRedis(
+      name,
+      definition.version,
+      definition.versionCheck,
+      options.cwd,
+    );
+  }
+  if (type === "docker") {
+    return inspectDocker(
+      name,
+      definition.version,
+      definition.versionCheck,
+      options.cwd,
+    );
+  }
   return {
     name,
     required: definition.version,

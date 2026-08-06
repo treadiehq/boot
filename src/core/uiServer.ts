@@ -20,6 +20,20 @@ import { resolveWorkspace } from "./workspace";
 
 export const DEFAULT_UI_PORT = 4400;
 
+/** Validate a CLI or programmatic TCP port. Port 0 requests an ephemeral port. */
+export function validateUiPort(value: number | string): number {
+  const port =
+    typeof value === "number"
+      ? value
+      : /^\d+$/.test(value)
+        ? Number(value)
+        : Number.NaN;
+  if (!Number.isSafeInteger(port) || port < 0 || port > 65_535) {
+    throw new Error("UI port must be a whole number from 0 to 65535.");
+  }
+  return port;
+}
+
 export interface UiServerOptions {
   /** TCP port; 0 asks the OS for a free port. */
   port?: number;
@@ -319,6 +333,7 @@ async function serveStatic(
 
 export async function startUiServer(options: UiServerOptions = {}): Promise<RunningUiServer> {
   const distDir = options.distDir ? path.resolve(options.distDir) : null;
+  const port = validateUiPort(options.port ?? DEFAULT_UI_PORT);
 
   const server = createServer((req, res) => {
     void (async () => {
@@ -342,7 +357,6 @@ export async function startUiServer(options: UiServerOptions = {}): Promise<Runn
     })();
   });
 
-  const port = options.port ?? DEFAULT_UI_PORT;
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
     server.listen(port, "127.0.0.1", resolve);

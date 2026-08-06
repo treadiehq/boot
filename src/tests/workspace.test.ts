@@ -154,6 +154,21 @@ describe("Workspace definition", () => {
     expect(workspaceDefinitionSchema.safeParse(candidate).success).toBe(true);
   });
 
+  it("accepts separate health and version checks for custom service connections", () => {
+    const candidate = {
+      ...definition(),
+      services: {
+        postgres: {
+          type: "postgres",
+          version: ">=16",
+          check: "pg_isready -p 5433",
+          versionCheck: "psql -p 5433 -tAX -c 'SHOW server_version'",
+        },
+      },
+    };
+    expect(workspaceDefinitionSchema.safeParse(candidate).success).toBe(true);
+  });
+
   it("rejects a start command with no way to verify health", () => {
     const candidate = {
       ...definition(),

@@ -97,13 +97,28 @@ Version matching supports exact prefixes such as `"24"` plus common `>=`, `>`,
 
 ## Services
 
-Services have a type, optional version, and description. The local provider can
-verify running PostgreSQL, Redis, and Docker services. Unknown types remain
-visible as unresolved requirements unless they declare a `check` command.
+Services have a type, optional version, and description. The local provider
+queries running PostgreSQL, Redis, and Docker services for their versions; it
+does not compare PostgreSQL or Redis requirements with local binary versions.
+Unknown types remain visible as unresolved requirements unless they declare a
+`check` command.
 
 `check` is a shell command that exits 0 when the service is healthy. It runs
 from the workspace root and takes precedence over the built-in probe for the
-service's type, so it also covers non-default ports or custom services.
+service's type, so it also covers non-default ports or custom services. Its
+output is not interpreted as a version.
+
+When a custom `check` is combined with `version`, add a `versionCheck` command
+that exits 0 and prints the running service version to stdout:
+
+```yaml
+services:
+  postgres:
+    type: postgres
+    version: ">=16"
+    check: pg_isready -p 5433
+    versionCheck: psql -p 5433 -tAX -c 'SHOW server_version'
+```
 
 `start` is a shell command Boot may run to bring the service up. It executes
 only when `boot up --start` (or `boot agent --start`) is supplied *and* the

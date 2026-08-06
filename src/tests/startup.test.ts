@@ -36,6 +36,23 @@ describe("startServices", () => {
     expect(existsSync(path.join(root, "started.txt"))).toBe(false);
   });
 
+  it("does not call a healthy service unavailable when only its version is unverified", async () => {
+    await fs.writeFile(path.join(root, "ready.txt"), "ok");
+
+    const results = await startServices(root, {
+      db: { check: checkReadyFile, version: ">=16" },
+    });
+
+    expect(results).toEqual([
+      expect.objectContaining({
+        name: "db",
+        action: "skipped",
+        status: expect.objectContaining({ state: "unsupported" }),
+        detail: expect.stringContaining("add a `versionCheck` command"),
+      }),
+    ]);
+  });
+
   it("starts an unhealthy service and waits until its check passes", async () => {
     const events: ServiceStartEvent[] = [];
     const results = await startServices(
@@ -52,6 +69,29 @@ describe("startServices", () => {
       }),
     ]);
     expect(events.map((event) => event.phase)).toEqual(["starting", "waiting", "ready"]);
+  });
+
+  it("fails promptly when a started service version cannot be verified", async () => {
+    const results = await startServices(
+      root,
+      {
+        db: {
+          check: checkReadyFile,
+          version: ">=16",
+          start: startReadyFile,
+        },
+      },
+      { pollIntervalMs: 25 },
+    );
+
+    expect(results).toEqual([
+      expect.objectContaining({
+        name: "db",
+        action: "failed",
+        status: expect.objectContaining({ state: "unsupported" }),
+        detail: expect.stringContaining("add a `versionCheck` command"),
+      }),
+    ]);
   });
 
   it("skips services that declare no start command", async () => {

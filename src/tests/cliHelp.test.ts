@@ -130,6 +130,50 @@ describe("CLI help", () => {
     }
   });
 
+  it.each(["abc", "8O88", "1.5", "-1", "65536"])(
+    "rejects invalid UI port %j before starting the server",
+    async (port) => {
+      const errors: string[] = [];
+      const program = buildProgram();
+      for (const command of allCommands(program)) {
+        command
+          .exitOverride()
+          .configureOutput({ writeErr: (text) => errors.push(text) });
+      }
+
+      await expect(
+        program.parseAsync(["node", "boot", "ui", "--port", port]),
+      ).rejects.toMatchObject({ code: "commander.invalidArgument" });
+
+      expect(errors.join("")).toContain(`argument '${port}' is invalid`);
+      expect(errors.join("")).toContain(
+        "UI port must be a whole number from 0 to 65535.",
+      );
+    },
+  );
+
+  it.each(["abc", "3OO", "250ms", "1.5", "-1", "2147483648"])(
+    "rejects invalid watch debounce %j",
+    async (debounce) => {
+      const errors: string[] = [];
+      const program = buildProgram();
+      for (const command of allCommands(program)) {
+        command
+          .exitOverride()
+          .configureOutput({ writeErr: (text) => errors.push(text) });
+      }
+
+      await expect(
+        program.parseAsync(["node", "boot", "watch", "--debounce", debounce]),
+      ).rejects.toMatchObject({ code: "commander.invalidArgument" });
+
+      expect(errors.join("")).toContain(`argument '${debounce}' is invalid`);
+      expect(errors.join("")).toContain(
+        "Watch debounce must be a whole number from 0 to 2147483647 milliseconds.",
+      );
+    },
+  );
+
   it("states JSON-only stdout and foreground behavior", () => {
     const program = buildProgram();
 

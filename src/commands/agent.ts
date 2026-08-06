@@ -44,6 +44,24 @@ function retryCommand(
   return args.join(" ");
 }
 
+function countLabel(count: number, singular: string, plural: string): string {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function workspaceProblemSummary(
+  blockers: number,
+  failures: number,
+): string {
+  const parts: string[] = [];
+  if (blockers > 0) {
+    parts.push(countLabel(blockers, "current blocker", "current blockers"));
+  }
+  if (failures > 0) {
+    parts.push(countLabel(failures, "failed action", "failed actions"));
+  }
+  return parts.join(" and ") || "readiness checks failed";
+}
+
 /**
  * One-shot, non-interactive bootstrap for CI, cloud agents, and fresh
  * containers. The core workflow is idempotent and returns all user-facing
@@ -68,17 +86,16 @@ export async function agentCommand(
   }
 
   if (!result.dryRun && !result.ready) {
-    const problems =
+    const summary =
       result.mode === "workspace"
-        ? new Set([
-            ...result.plan.blockers,
-            ...result.failures.map((failure) => failure.message),
-          ]).size
-        : result.failures.length;
+        ? workspaceProblemSummary(
+            result.plan.blockers.length,
+            result.failures.length,
+          )
+        : countLabel(result.failures.length, "problem", "problems");
     throw new Error(
-      `The agent workspace is not ready: ${problems} ${
-        problems === 1 ? "problem" : "problems"
-      }. Fix the reported problems, then run: ${retryCommand(remote, root, options)}`,
+      `The agent workspace is not ready: ${summary}. ` +
+        `Fix the reported problems, then run: ${retryCommand(remote, root, options)}`,
     );
   }
 }

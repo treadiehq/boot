@@ -34,6 +34,41 @@ function compatibilityResult(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function workspaceResult(
+  blockers: string[] = [],
+  failures: Array<{
+    kind: "repository" | "environment" | "service" | "command";
+    name: string;
+    message: string;
+  }> = [],
+) {
+  return {
+    schemaVersion: 1,
+    mode: "workspace",
+    root: "/workspace",
+    source: { kind: "git", state: "ready" },
+    dryRun: false,
+    plan: {
+      workspace: { id: "test", name: "Test", profile: "agent" },
+      provider: "local",
+      root: "/workspace",
+      readOnly: false,
+      repositories: [],
+      tools: [],
+      services: [],
+      environment: [],
+      commands: {},
+      constraints: [],
+      ready: false,
+      blockers,
+    },
+    applied: [],
+    failures,
+    warnings: [],
+    ready: false,
+  };
+}
+
 describe("agentCommand", () => {
   const lines: string[] = [];
 
@@ -114,6 +149,46 @@ describe("agentCommand", () => {
 
     expect(lines).toHaveLength(1);
     expect(outputMock).toHaveBeenCalledOnce();
+  });
+
+  it("counts distinct failed actions even when their messages are identical", async () => {
+    bootstrapMock.mockResolvedValue(
+      workspaceResult(
+        [],
+        ["db-setup", "api-setup", "web-setup"].map((name) => ({
+          kind: "command" as const,
+          name,
+          message: "exited with status 1",
+        })),
+      ),
+    );
+
+    await expect(
+      agentCommand("git@example.com:map.git", "/workspace", { json: true }),
+    ).rejects.toThrow(
+      "The agent workspace is not ready: 3 failed actions.",
+    );
+  });
+
+  it("reports final blockers separately from failed actions", async () => {
+    bootstrapMock.mockResolvedValue(
+      workspaceResult(
+        ['repository "api": repository needs to be downloaded'],
+        [
+          {
+            kind: "repository",
+            name: "api",
+            message: "authentication failed",
+          },
+        ],
+      ),
+    );
+
+    await expect(
+      agentCommand("git@example.com:map.git", "/workspace", { json: true }),
+    ).rejects.toThrow(
+      "The agent workspace is not ready: 1 current blocker and 1 failed action.",
+    );
   });
 
   it("preserves every behavior-changing option in the retry command", async () => {

@@ -3,6 +3,28 @@ import path from "node:path";
 import { autoHydrate } from "./autohydrate";
 import { scanWorkspace } from "./scanner";
 
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
+
+/** Validate a CLI or programmatic debounce delay accepted by Node timers. */
+export function validateWatchDebounce(value: number | string): number {
+  const debounceMs =
+    typeof value === "number"
+      ? value
+      : /^\d+$/.test(value)
+        ? Number(value)
+        : Number.NaN;
+  if (
+    !Number.isSafeInteger(debounceMs) ||
+    debounceMs < 0 ||
+    debounceMs > MAX_TIMER_DELAY_MS
+  ) {
+    throw new Error(
+      `Watch debounce must be a whole number from 0 to ${MAX_TIMER_DELAY_MS} milliseconds.`,
+    );
+  }
+  return debounceMs;
+}
+
 /** List the absolute paths of every placeholder repo in a workspace. */
 export async function listPlaceholders(root: string): Promise<string[]> {
   const scan = await scanWorkspace(root);
@@ -55,7 +77,7 @@ export async function startWatcher(
   options: WatchOptions = {},
 ): Promise<Watcher> {
   const absRoot = path.resolve(root);
-  const debounceMs = options.debounceMs ?? 400;
+  const debounceMs = validateWatchDebounce(options.debounceMs ?? 400);
 
   const placeholders = await listPlaceholders(absRoot);
   const active = new Set(placeholders);
