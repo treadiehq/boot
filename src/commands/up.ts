@@ -48,12 +48,13 @@ export async function upCommand(
   }
 
   if (!options.json) renderWorkspacePlan(plan);
+  const streamServiceEvents = !options.json && options.start === true;
   const result = await provider.apply(root, workspace, plan, {
     materializeEnv: options.env !== false,
     runSetup: options.runSetup,
     startServices: options.start,
     // In --json mode stdout must stay valid JSON, so skip live narration.
-    onServiceEvent: options.json ? undefined : renderServiceStartEvent,
+    onServiceEvent: streamServiceEvents ? renderServiceStartEvent : undefined,
   });
 
   if (result.ready) {
@@ -69,7 +70,9 @@ export async function upCommand(
   if (options.json) {
     logger.info(JSON.stringify(result, null, 2));
   } else {
-    renderRealizationResult(result);
+    renderRealizationResult(result, {
+      serviceFailuresStreamed: streamServiceEvents,
+    });
     logger.info();
     if (result.ready) {
       logger.success("The workspace is ready.");

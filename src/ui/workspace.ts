@@ -110,7 +110,7 @@ export function renderWorkspacePlan(plan: RealizationPlan, dryRun = false): void
   }
 }
 
-/** Narrate service startup as it happens; failures are reported with the result. */
+/** Narrate service startup as it happens. */
 export function renderServiceStartEvent(event: ServiceStartEvent): void {
   if (event.phase === "starting") {
     logger.info(
@@ -128,16 +128,29 @@ export function renderServiceStartEvent(event: ServiceStartEvent): void {
     );
   } else if (event.phase === "skipped" && event.detail) {
     logger.info(colors.dim(`  skipped ${event.service}: ${event.detail}`));
+  } else if (event.phase === "failed") {
+    logger.error(
+      `service ${colors.cyan(event.service)}: ${event.detail ?? "failed"}`,
+    );
   }
 }
 
-export function renderRealizationResult(result: RealizationResult): void {
+export interface RealizationRenderOptions {
+  /** Service failures were already printed by the live event renderer. */
+  serviceFailuresStreamed?: boolean;
+}
+
+export function renderRealizationResult(
+  result: RealizationResult,
+  options: RealizationRenderOptions = {},
+): void {
   if (result.applied.length > 0) {
     logger.info();
     logger.heading("Completed");
     for (const item of result.applied) logger.success(`${item.kind} ${item.name}`);
   }
   for (const failure of result.failures) {
+    if (options.serviceFailuresStreamed && failure.kind === "service") continue;
     logger.error(`${failure.kind} ${failure.name}: ${failure.message}`);
   }
 }

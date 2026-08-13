@@ -19,12 +19,6 @@ export const GENERATED_DIRS = [
   ".cache",
 ] as const;
 
-/**
- * Directories the scanner must skip entirely while walking a workspace.
- * This is the generated set plus `.git` itself.
- */
-export const SKIP_DIRS = new Set<string>([...GENERATED_DIRS, ".git"]);
-
 /** Convert a platform path into a stable, portable posix-style path. */
 export function toPosix(p: string): string {
   return p.split(path.sep).join("/");

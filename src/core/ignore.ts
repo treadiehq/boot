@@ -124,8 +124,3 @@ export function createIgnoreMatcher(rules: string[]): IgnoreMatcher {
     },
   };
 }
-
-/** Merge default rules, config rules, and ignore-file rules into one matcher. */
-export function mergeIgnoreRules(...ruleSets: string[][]): string[] {
-  return ruleSets.flat();
-}

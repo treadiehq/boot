@@ -137,8 +137,30 @@ export async function hydratePlaceholder(
         try {
           await fs.rename(clonePath, repoDir);
         } catch (error) {
-          await fs.rename(backupPath, repoDir).catch(() => undefined);
-          throw error;
+          try {
+            await fs.rename(backupPath, repoDir);
+          } catch (restoreError) {
+            const moveReason = sanitizeUserText((error as Error).message);
+            const restoreReason = sanitizeUserText(
+              (restoreError as Error).message,
+            );
+            throw new Error(
+              [
+                "The repository was downloaded, but Boot could not move it into place.",
+                moveReason ? `Move failed: ${moveReason}.` : "",
+                "Boot also could not restore the original folder.",
+                restoreReason ? `Restore failed: ${restoreReason}.` : "",
+                `The original folder remains at ${quoteUserValue(backupPath, 500)}.`,
+                `Move it back to ${quoteUserValue(repoDir, 500)}, then retry.`,
+              ]
+                .filter(Boolean)
+                .join(" "),
+            );
+          }
+          throw stagedHydrationError(
+            "The repository was downloaded, but Boot could not move it into place; the existing folder was restored.",
+            error,
+          );
         }
         await fs
           .rm(backupPath, { recursive: true, force: true })

@@ -40,6 +40,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await fs.rm(root, { recursive: true, force: true });
 });
 
@@ -262,6 +263,111 @@ describe("hydrateCommand", () => {
         (name) =>
           name.startsWith(".immovable.boot-stage-") ||
           name.startsWith("immovable.boot-backup-"),
+      ),
+    ).toEqual([]);
+  });
+
+  it("restores the placeholder and explains a failed clone promotion", async () => {
+    const repoDir = await makePlaceholder(
+      "apps/promotion",
+      "git@example.com:promotion.git",
+    );
+    await fs.writeFile(path.join(repoDir, "config.txt"), "original\n");
+    cloneMock.mockImplementation(async (_url: string, target: string) => {
+      await fs.mkdir(path.join(target, ".git"), { recursive: true });
+      await fs.writeFile(path.join(target, "README.md"), "# promotion\n");
+    });
+    const originalRename = fs.rename.bind(fs);
+    vi.spyOn(fs, "rename").mockImplementation(async (from, to) => {
+      if (path.basename(String(from)) === "clone" && String(to) === repoDir) {
+        throw Object.assign(new Error("No space left on device"), {
+          code: "ENOSPC",
+        });
+      }
+      await originalRename(from, to);
+    });
+
+    await expect(hydratePlaceholder(repoDir)).rejects.toThrow(
+      /could not move it into place; the existing folder was restored.*No space left on device.*Fix the reported problem, then retry/i,
+    );
+
+    expect(await fs.readFile(path.join(repoDir, "config.txt"), "utf8")).toBe(
+      "original\n",
+    );
+    expect((await readPlaceholder(repoDir))?.hydrateStatus).toBe("placeholder");
+    expect(
+      (await fs.readdir(path.dirname(repoDir))).filter(
+        (name) =>
+          name.startsWith(".promotion.boot-stage-") ||
+          name.startsWith("promotion.boot-backup-"),
+      ),
+    ).toEqual([]);
+  });
+
+  it("reports the backup location when clone promotion rollback also fails", async () => {
+    const repoDir = await makePlaceholder(
+      "apps/stranded",
+      "git@example.com:stranded.git",
+    );
+    await fs.writeFile(path.join(repoDir, "config.txt"), "original\n");
+    cloneMock.mockImplementation(async (_url: string, target: string) => {
+      await fs.mkdir(path.join(target, ".git"), { recursive: true });
+      await fs.writeFile(path.join(target, "README.md"), "# stranded\n");
+    });
+    const originalRename = fs.rename.bind(fs);
+    vi.spyOn(fs, "rename").mockImplementation(async (from, to) => {
+      if (path.basename(String(from)) === "clone" && String(to) === repoDir) {
+        throw Object.assign(new Error("No space left on device"), {
+          code: "ENOSPC",
+        });
+      }
+      if (
+        String(from).startsWith(`${repoDir}.boot-backup-`) &&
+        String(to) === repoDir
+      ) {
+        throw Object.assign(new Error("Permission denied"), {
+          code: "EACCES",
+        });
+      }
+      await originalRename(from, to);
+    });
+
+    let thrown: Error | null = null;
+    try {
+      await hydratePlaceholder(repoDir);
+    } catch (error) {
+      thrown = error as Error;
+    }
+
+    const parent = path.dirname(repoDir);
+    const backups = (await fs.readdir(parent)).filter((name) =>
+      name.startsWith("stranded.boot-backup-"),
+    );
+    expect(backups).toHaveLength(1);
+    const backupPath = path.join(parent, backups[0]!);
+    expect(thrown?.message).toContain(
+      "The repository was downloaded, but Boot could not move it into place.",
+    );
+    expect(thrown?.message).toContain("Move failed: No space left on device.");
+    expect(thrown?.message).toContain(
+      "Restore failed: Permission denied.",
+    );
+    expect(thrown?.message).toContain(
+      `The original folder remains at "${backupPath}".`,
+    );
+    expect(thrown?.message).toContain(
+      `Move it back to "${repoDir}", then retry.`,
+    );
+    await expect(fs.stat(repoDir)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(await fs.readFile(path.join(backupPath, "config.txt"), "utf8")).toBe(
+      "original\n",
+    );
+    expect((await readPlaceholder(backupPath))?.hydrateStatus).toBe(
+      "placeholder",
+    );
+    expect(
+      (await fs.readdir(parent)).filter((name) =>
+        name.startsWith(".stranded.boot-stage-"),
       ),
     ).toEqual([]);
   });

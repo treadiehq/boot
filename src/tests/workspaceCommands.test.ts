@@ -78,4 +78,59 @@ describe("Workspace commands", () => {
     expect(output.workspace).toMatchObject({ id: "billing", profile: "agent" });
     expect(await readWorkspaceContext(root)).toBeNull();
   });
+
+  it("reports service failures before starting the next service without repeating them", async () => {
+    await fs.writeFile(
+      path.join(root, CONFIG_FILE_NAME),
+      stringifyYaml({
+        schemaVersion: 1,
+        workspace: { id: "failing-services", name: "Failing services" },
+        repositories: {},
+        services: {
+          db: {
+            check: 'node -e "process.exit(1)"',
+            start: 'node -e "process.exit(1)"',
+          },
+          cache: {
+            check: 'node -e "process.exit(1)"',
+            start: 'node -e "process.exit(1)"',
+          },
+        },
+      }),
+    );
+    const lines: string[] = [];
+    vi.spyOn(console, "log").mockImplementation((message?: unknown) => {
+      lines.push(String(message ?? ""));
+    });
+    vi.spyOn(console, "error").mockImplementation((message?: unknown) => {
+      lines.push(String(message ?? ""));
+    });
+
+    await expect(upCommand(root, { start: true })).rejects.toThrow(
+      /workspace is not ready/i,
+    );
+
+    const dbStarting = lines.findIndex((line) =>
+      line.includes("starting service db"),
+    );
+    const dbFailed = lines.findIndex((line) =>
+      line.includes("service db: the start command exited with status 1"),
+    );
+    const cacheStarting = lines.findIndex((line) =>
+      line.includes("starting service cache"),
+    );
+    expect(dbStarting).toBeGreaterThanOrEqual(0);
+    expect(dbFailed).toBeGreaterThan(dbStarting);
+    expect(cacheStarting).toBeGreaterThan(dbFailed);
+    expect(
+      lines.filter((line) =>
+        line.includes("service db: the start command exited with status 1"),
+      ),
+    ).toHaveLength(1);
+    expect(
+      lines.filter((line) =>
+        line.includes("service cache: the start command exited with status 1"),
+      ),
+    ).toHaveLength(1);
+  });
 });
