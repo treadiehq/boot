@@ -16,8 +16,14 @@ function compatibilityResult(overrides: Record<string, unknown> = {}) {
     schemaVersion: 1,
     mode: "compatibility",
     root: "/workspace",
-    source: { kind: "git", state: "preview" },
+    source: {
+      kind: "git",
+      state: "preview",
+      commit: "a".repeat(40),
+      pinned: false,
+    },
     dryRun: true,
+    ephemeral: false,
     reconciliation: {
       placeholders: 1,
       cloned: 0,
@@ -46,8 +52,14 @@ function workspaceResult(
     schemaVersion: 1,
     mode: "workspace",
     root: "/workspace",
-    source: { kind: "git", state: "ready" },
+    source: {
+      kind: "git",
+      state: "updated",
+      commit: "a".repeat(40),
+      pinned: false,
+    },
     dryRun: false,
+    ephemeral: false,
     plan: {
       workspace: { id: "test", name: "Test", profile: "agent" },
       provider: "local",
@@ -221,6 +233,32 @@ describe("agentCommand", () => {
       "boot agent '/maps/team map' '/workspace/agent root' " +
         "--profile 'review profile' --provider 'remote provider' --run-setup " +
         "--no-env --folder --eager --all --json --hydrate apps/api 'libs/*'",
+    );
+  });
+
+  it("preserves map pinning and ephemeral mode in the retry command", async () => {
+    bootstrapMock.mockResolvedValue(
+      compatibilityResult({
+        dryRun: false,
+        failures: [
+          {
+            kind: "repository",
+            name: "api",
+            message: "authentication failed",
+          },
+        ],
+      }),
+    );
+    const commit = "a".repeat(40);
+
+    await expect(
+      agentCommand("git@example.com:map.git", "/workspace", {
+        mapCommit: commit,
+        ephemeral: true,
+        json: true,
+      }),
+    ).rejects.toThrow(
+      `boot agent git@example.com:map.git /workspace --map-commit ${commit} --ephemeral --json`,
     );
   });
 });

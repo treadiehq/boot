@@ -59,6 +59,10 @@ if [[ "\${1:-}" == "--version" ]]; then
   printf 'test-version\\n'
   exit 0
 fi
+if [[ "\${1:-}" == "agent" && "\${2:-}" == "--help" ]]; then
+  printf '%s\\n' -- '--ephemeral'
+  exit 0
+fi
 printf '%s\\n' "$@" > "$BOOT_TEST_LOG"
 printf '{"ready":true}\\n'
 `,
@@ -72,7 +76,7 @@ printf '{"ready":true}\\n'
       },
     );
 
-    expect(result.status).toBe(0);
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
     expect(result.stdout).toBe('{"ready":true}\n');
     expect(result.stderr).toBe("");
     expect(readFileSync(callLog, "utf8").trim().split("\n")).toEqual([
@@ -84,6 +88,7 @@ printf '{"ready":true}\\n'
       "--no-env",
       "--run-setup",
       "--json",
+      "--ephemeral",
     ]);
   });
 
@@ -101,6 +106,10 @@ cat > "$BOOT_BIN_DIR/boot" <<'BOOT'
 #!/usr/bin/env bash
 if [[ "\${1:-}" == "--version" ]]; then
   printf 'installed-version\\n'
+  exit 0
+fi
+if [[ "\${1:-}" == "agent" && "\${2:-}" == "--help" ]]; then
+  printf '%s\\n' -- '--ephemeral'
   exit 0
 fi
 printf '%s\\n' "$@" > "$BOOT_TEST_LOG"
@@ -131,7 +140,61 @@ printf 'fixture installer output\\n'
       path.join(root, "workspace"),
       "--json",
       "--run-setup",
+      "--ephemeral",
     ]);
+  });
+
+  it("upgrades an existing Boot binary that lacks ephemeral agent support", () => {
+    const root = tempRoot();
+    const oldBinDir = path.join(root, "old-bin");
+    const newBinDir = path.join(root, "new-bin");
+    const callLog = path.join(root, "upgraded-args.txt");
+    const installer = path.join(root, "install.sh");
+    mkdirSync(oldBinDir);
+    writeExecutable(
+      path.join(oldBinDir, "boot"),
+      `#!/usr/bin/env bash
+if [[ "\${1:-}" == "--version" ]]; then printf 'old-version\\n'; exit 0; fi
+if [[ "\${1:-}" == "agent" && "\${2:-}" == "--help" ]]; then
+  printf 'old agent help\\n'
+  exit 0
+fi
+exit 99
+`,
+    );
+    writeExecutable(
+      installer,
+      `#!/usr/bin/env bash
+set -euo pipefail
+mkdir -p "$BOOT_BIN_DIR"
+cat > "$BOOT_BIN_DIR/boot" <<'BOOT'
+#!/usr/bin/env bash
+if [[ "\${1:-}" == "--version" ]]; then printf 'new-version\\n'; exit 0; fi
+if [[ "\${1:-}" == "agent" && "\${2:-}" == "--help" ]]; then
+  printf '%s\\n' -- '--ephemeral'
+  exit 0
+fi
+printf '%s\\n' "$@" > "$BOOT_TEST_LOG"
+printf '{"ready":true,"upgraded":true}\\n'
+BOOT
+chmod +x "$BOOT_BIN_DIR/boot"
+`,
+    );
+
+    const result = runScript(
+      ["git@github.com:acme/map.git", path.join(root, "workspace")],
+      {
+        PATH: `${oldBinDir}:${process.env.PATH ?? ""}`,
+        BOOT_BIN_DIR: newBinDir,
+        BOOT_INSTALL_URL: pathToFileURL(installer).href,
+        BOOT_TEST_LOG: callLog,
+      },
+    );
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(result.stdout).toBe('{"ready":true,"upgraded":true}\n');
+    expect(result.stderr).toContain("Installing Boot from file:");
+    expect(readFileSync(callLog, "utf8")).toContain("--ephemeral");
   });
 
   it("does not duplicate explicit output or setup flags", () => {
@@ -143,6 +206,10 @@ printf 'fixture installer output\\n'
       path.join(binDir, "boot"),
       `#!/usr/bin/env bash
 if [[ "\${1:-}" == "--version" ]]; then exit 0; fi
+if [[ "\${1:-}" == "agent" && "\${2:-}" == "--help" ]]; then
+  printf '%s\\n' -- '--ephemeral'
+  exit 0
+fi
 printf '%s\\n' "$@" > "$BOOT_TEST_LOG"
 printf '{}\\n'
 `,
@@ -154,6 +221,7 @@ printf '{}\\n'
         path.join(root, "workspace"),
         "--run-setup",
         "--json",
+        "--ephemeral",
       ],
       {
         PATH: `${binDir}:${process.env.PATH ?? ""}`,
@@ -165,5 +233,6 @@ printf '{}\\n'
     const args = readFileSync(callLog, "utf8").trim().split("\n");
     expect(args.filter((arg) => arg === "--run-setup")).toHaveLength(1);
     expect(args.filter((arg) => arg === "--json")).toHaveLength(1);
+    expect(args.filter((arg) => arg === "--ephemeral")).toHaveLength(1);
   });
 });

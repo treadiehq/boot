@@ -59,6 +59,8 @@ describe("compatibility bootstrap failure state", () => {
     openSourceMock.mockReset().mockResolvedValue({
       kind: "git",
       state: "linked",
+      commit: "a".repeat(40),
+      pinned: false,
       mapDir: "/map",
       inspectionRoot: "/workspace",
       cleanup: cleanupMock,

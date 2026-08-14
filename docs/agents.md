@@ -64,6 +64,17 @@ At the beginning of a task, run `boot inspect --json`.
 - Do not print, copy, or infer secret values.
 ```
 
+## Portable Boot workspace skill
+
+This repository ships one
+[Agent Skills](https://agentskills.io) artifact at
+`.agents/skills/boot-workspace/SKILL.md`. Codex discovers that canonical path,
+and Claude Code discovers the same artifact through the repository-relative
+`.claude/skills/boot-workspace` symlink. The skill requires
+`boot inspect --json` before project work and treats reported repository scope,
+read-only intent, commands, and constraints as mandatory while prohibiting
+secret access or disclosure.
+
 ## Fresh cloud environments
 
 When the workspace has been published through a workspace map:
@@ -74,11 +85,16 @@ curl -fsSL https://useboot.co/agent.sh | bash -s -- \
 ```
 
 The adapter installs Boot when needed and invokes `boot agent` with
-`--run-setup --json`. `boot agent` remains the one-shot bootstrap contract for
-CI, cloud VMs, and fresh containers. On the first run it links the published
-map; later runs pull and reapply it safely. It uses the published `agent`
-profile by default when one exists, or accepts another profile with
-`--profile`.
+`--run-setup --ephemeral --json`. Ephemeral mode still prepares the target
+workspace, but it never creates or publishes machine identity/state. `boot
+agent` remains the one-shot bootstrap contract for CI, cloud VMs, and fresh
+containers. On the first run it links the published map; later runs pull and
+reapply it safely. It uses the published `agent` profile by default when one
+exists, or accepts another profile with `--profile`.
+
+For an immutable map input, append `--map-commit <full-sha>`. Real pinned runs
+must be ephemeral; pinned dry runs are also supported. The result reports the
+exact consumed commit and whether it was pinned.
 
 The JSON result includes:
 
@@ -101,3 +117,9 @@ maps that do not yet publish `boot.yaml`.
 Automation should check the exit status of `boot agent` or `boot up`. Partial
 repository, service, tool, setup, or environment failures produce a nonzero
 exit.
+
+For a current E2B code-defined image and runtime launcher, see
+[`templates/e2b/boot-agent`](../templates/e2b/boot-agent/README.md). The image
+contains the canonical skill at both Codex and Claude discovery locations, but
+runs Boot synchronously only after `Sandbox.create()` receives a credential-free
+`BOOT_MAP` reference.

@@ -43,7 +43,9 @@ curl -fsSL https://useboot.co/agent.sh | bash -s -- \
 ```
 
 The adapter installs Boot when needed and runs the idempotent `boot agent`
-contract with `--run-setup --json`.
+contract with `--run-setup --ephemeral --json`. It prepares the target without
+creating or pushing machine state. Append `--map-commit <full-sha>` when an
+unattended run must consume one reviewed Git map revision.
 
 Provision the Boot secret key through the environment's secret-management
 channel when the profile requires encrypted values. The key is never included

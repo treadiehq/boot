@@ -34,6 +34,8 @@ function retryCommand(
   if (options.env === true) args.push("--env");
   if (options.env === false) args.push("--no-env");
   if (options.folder) args.push("--folder");
+  if (options.mapCommit) args.push("--map-commit", commandArg(options.mapCommit));
+  if (options.ephemeral) args.push("--ephemeral");
   if (options.eager) args.push("--eager");
   if (options.all) args.push("--all");
   if (options.json) args.push("--json");

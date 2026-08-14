@@ -68,12 +68,14 @@ idempotent contract:
 
 ```bash
 boot agent git@github.com:acme/billing-map.git /workspace \
-  --profile agent --run-setup --json
+  --profile agent --run-setup --ephemeral --json
 ```
 
 It acquires the workspace map, realizes only the selected profile, materializes
 available encrypted environment values, runs declared setup commands, and
-returns secret-free readiness diagnostics. A machine that needs Boot-managed
+returns runtime-validated, secret-free readiness diagnostics. The adapter's
+ephemeral mode does not create or publish machine state. Pin a reviewed map
+revision with `--map-commit <full-sha>`. A machine that needs Boot-managed
 secrets must have the workspace key provisioned before bootstrap.
 
 ## What Boot handles
@@ -95,6 +97,7 @@ declare. It does not replace Git, install tools, or supervise processes.
 - [Getting started](docs/getting-started.md)
 - [`boot.yaml` reference](docs/boot-yaml.md)
 - [Agent workflows](docs/agents.md)
+- [Agent bootstrap benchmark](docs/benchmarks.md)
 - [Sharing a workspace](docs/publishing.md)
 - [CLI reference](docs/reference.md)
 - [Advanced features](docs/detailed.md)

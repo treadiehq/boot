@@ -104,6 +104,11 @@ jobs:
             echo "Cross-compiled for $M host; format checked only."
           fi
 
+      - name: Distribution E2E (native Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: bash scripts/distribution/e2e.sh --binary "${{ matrix.artifact }}"
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:

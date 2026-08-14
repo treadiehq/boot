@@ -65,6 +65,12 @@ install_boot() {
   printf '%s\n' "$installed"
 }
 
+supports_ephemeral_agent() {
+  local help
+  help="$("$1" agent --help 2>/dev/null || true)"
+  [[ "$help" == *"--ephemeral"* ]]
+}
+
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   usage
   exit 0
@@ -96,16 +102,28 @@ fi
 "$boot_bin" --version >/dev/null 2>&1 ||
   die "The Boot executable could not run: $boot_bin"
 
-agent_options=("$@")
+if ! supports_ephemeral_agent "$boot_bin"; then
+  if [[ -n "${BOOT_BIN:-}" ]]; then
+    die "BOOT_BIN does not support boot agent --ephemeral. Install a current Boot release, then retry."
+  fi
+  boot_bin="$(install_boot)"
+  supports_ephemeral_agent "$boot_bin" ||
+    die "The installed Boot release does not support boot agent --ephemeral. Install a current release, then retry."
+fi
+
 has_run_setup=false
 has_json=false
-for option in "${agent_options[@]}"; do
+has_ephemeral=false
+for option in "$@"; do
   [[ "$option" == "--run-setup" ]] && has_run_setup=true
   [[ "$option" == "--json" ]] && has_json=true
+  [[ "$option" == "--ephemeral" ]] && has_ephemeral=true
 done
 
+agent_options=("$@")
 $has_run_setup || agent_options+=("--run-setup")
 $has_json || agent_options+=("--json")
+$has_ephemeral || agent_options+=("--ephemeral")
 
 # Keep stdout machine-readable: installer progress and wrapper errors use stderr,
 # while `boot agent --json` owns stdout and includes the inspect diagnostics.

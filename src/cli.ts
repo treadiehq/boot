@@ -43,6 +43,7 @@ import { updateCommand, type UpdateOptions } from "./commands/update";
 import { upCommand, type UpOptions } from "./commands/up";
 import { watchCommand } from "./commands/watch";
 import { validateDaemonInterval } from "./core/service";
+import { parseFullGitSha } from "./core/git";
 import { validateUiPort } from "./core/uiServer";
 import { validateWatchDebounce } from "./core/watcher";
 import { logger } from "./ui/logger";
@@ -90,6 +91,14 @@ function parseUiPort(value: string): number {
 function parseWatchDebounce(value: string): number {
   try {
     return validateWatchDebounce(value);
+  } catch (error) {
+    throw new InvalidArgumentError((error as Error).message);
+  }
+}
+
+function parseMapCommit(value: string): string {
+  try {
+    return parseFullGitSha(value);
   } catch (error) {
     throw new InvalidArgumentError((error as Error).message);
   }
@@ -190,6 +199,16 @@ export function buildProgram(): Command {
     .option("--env", "write encrypted environment values (compatibility alias)")
     .option("--no-env", "check encrypted values without writing .env files")
     .option("--folder", "use a synced folder for the workspace map", false)
+    .option(
+      "--map-commit <sha>",
+      "use an exact 40- or 64-character Git map commit",
+      parseMapCommit,
+    )
+    .option(
+      "--ephemeral",
+      "realize state without publishing machine or map state",
+      false,
+    )
     .option("--dry-run", "show the plan without changing the workspace", false)
     .option("--json", "write JSON only to stdout", false)
     .option("--eager", "clone every map repository (compatibility)", false)
@@ -203,7 +222,7 @@ export function buildProgram(): Command {
     )
     .addHelpText(
       "after",
-      '\nExamples:\n  boot agent git@github.com:me/code-map.git ~/code\n  boot agent git@github.com:me/code-map.git ~/code --profile agent --run-setup --start\n  boot agent git@github.com:me/code-map.git ~/code --dry-run --json\n',
+      '\nExamples:\n  boot agent git@github.com:me/code-map.git ~/code\n  boot agent git@github.com:me/code-map.git ~/code --profile agent --run-setup --start\n  boot agent git@github.com:me/code-map.git ~/code --map-commit <full-sha> --ephemeral\n  boot agent git@github.com:me/code-map.git ~/code --dry-run --json\n',
     );
 
   program.commandsGroup("Other commands:");

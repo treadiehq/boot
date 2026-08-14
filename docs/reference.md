@@ -36,8 +36,17 @@ Options:
 - `--start` runs declared service start commands and waits for health;
 - `--no-env` validates encrypted values without writing `.env` files;
 - `--folder` treats the source as an already-synchronized folder;
+- `--ephemeral` prepares the target without creating or publishing machine
+  identity/state;
+- `--map-commit <sha>` selects an exact full 40- or 64-character Git map
+  commit;
 - `--dry-run` previews without changing the requested workspace;
 - `--json` writes one versioned result only to stdout.
+
+Real pinned runs require `--ephemeral`; dry-run pinning is allowed. Pinning is
+available only for Git-backed maps. Ephemeral mode still clones repositories,
+writes available environment files, and runs explicitly requested setup or
+service commands.
 
 The compatibility flags `--hydrate`, `--all`, `--eager`, and `--env` remain
 available for maps that do not yet publish `boot.yaml`.
@@ -90,10 +99,15 @@ Requirement states are `available`, `missing`, `mismatch`, or `unsupported`.
 
 The top-level bootstrap result contains:
 
-- `schemaVersion`, `mode`, `source`, `dryRun`, and `ready`;
+- `schemaVersion`, `mode`, `source`, `dryRun`, `ephemeral`, and `ready`;
 - `diagnostics`, using the same secret-free workspace shape as
   `boot inspect --json`;
 - `applied`, `failures`, and `warnings`.
+
+`source.commit` is the exact map commit consumed before any optional state
+publication, and `source.pinned` reports whether the caller selected it.
+Both inspect and bootstrap output are checked against strict Zod schemas before
+serialization.
 
 Compatibility-map results replace `diagnostics` with repository
 `reconciliation`, `hydration`, and `environmentFiles` summaries. Neither shape

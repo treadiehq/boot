@@ -20,6 +20,11 @@ jobs:
           node-version: 20
           cache: pnpm
 
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -28,6 +33,12 @@ jobs:
 
       - name: Test
         run: pnpm test:run
+
+      - name: Build current Linux distribution
+        run: bash scripts/distribution/build-native-linux.sh --output "$RUNNER_TEMP/boot-linux-x64"
+
+      - name: Distribution E2E
+        run: bash scripts/distribution/e2e.sh --binary "$RUNNER_TEMP/boot-linux-x64"
 
   windows-binary:
     # Build the Windows binary on a real Windows runner and confirm it launches,

@@ -1,6 +1,11 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import {
+  checkoutCommit,
+  getLastCommit,
+  parseFullGitSha,
+} from "./git";
 import { withWorkspaceMapLock } from "./lock";
 import {
   isLinked,
@@ -24,6 +29,10 @@ export type WorkspaceSourceState = "linked" | "updated" | "cached" | "preview";
 export interface WorkspaceSource {
   kind: WorkspaceSourceKind;
   state: WorkspaceSourceState;
+  /** Exact Git map commit used for this run; null for folder sources or empty maps. */
+  commit: string | null;
+  /** Whether the source was deliberately checked out at a requested commit. */
+  pinned: boolean;
   mapDir: string;
   /** Root whose .boot/map points at mapDir. Used for side-effect-free previews. */
   inspectionRoot: string;
@@ -34,6 +43,7 @@ export interface WorkspaceSource {
 export interface WorkspaceSourceOptions {
   folder?: boolean;
   dryRun?: boolean;
+  mapCommit?: string;
 }
 
 function alreadyLinkedError(root: string): Error {
@@ -44,6 +54,33 @@ function alreadyLinkedError(root: string): Error {
 
 function sourceKind(options: WorkspaceSourceOptions): WorkspaceSourceKind {
   return options.folder ? "folder" : "git";
+}
+
+function normalizedOptions(options: WorkspaceSourceOptions): WorkspaceSourceOptions {
+  if (!options.mapCommit) return options;
+  if (options.folder) {
+    throw new Error("Map commit pinning is available only for Git workspace maps.");
+  }
+  return { ...options, mapCommit: parseFullGitSha(options.mapCommit) };
+}
+
+async function sourceCommit(
+  kind: WorkspaceSourceKind,
+  mapDir: string,
+): Promise<string | null> {
+  return kind === "git" ? getLastCommit(mapDir) : null;
+}
+
+async function pinSource(
+  kind: WorkspaceSourceKind,
+  mapDir: string,
+  mapCommit?: string,
+): Promise<void> {
+  if (!mapCommit) return;
+  if (kind !== "git") {
+    throw new Error("Map commit pinning is available only for Git workspace maps.");
+  }
+  await checkoutCommit(mapDir, mapCommit);
 }
 
 function normalizedSource(kind: WorkspaceSourceKind, value: string): string {
@@ -93,6 +130,7 @@ export async function initializeWorkspaceSource(
   root: string,
   options: WorkspaceSourceOptions = {},
 ): Promise<WorkspaceSource> {
+  options = normalizedOptions(options);
   const absoluteRoot = path.resolve(root);
   const kind = sourceKind(options);
   const paths = mapPaths(absoluteRoot);
@@ -118,8 +156,10 @@ export async function initializeWorkspaceSource(
     } else {
       await cloneMap(remote, stagingMapDir);
     }
+    await pinSource(kind, stagingMapDir, options.mapCommit);
     // Validate imported compatibility data before persisting the link pointer.
     await readWorkspaceMap(stagingMapDir);
+    const commit = await sourceCommit(kind, stagingMapDir);
 
     // Re-check immediately before publishing the staged map. A caller that
     // skipped the lock still cannot make cleanup target another process's data.
@@ -135,6 +175,8 @@ export async function initializeWorkspaceSource(
     return {
       kind,
       state: "linked",
+      commit,
+      pinned: Boolean(options.mapCommit),
       mapDir: paths.mapDir,
       inspectionRoot: absoluteRoot,
       transport,
@@ -157,6 +199,7 @@ async function previewWorkspaceSource(
   remote: string,
   options: WorkspaceSourceOptions,
 ): Promise<WorkspaceSource> {
+  options = normalizedOptions(options);
   const kind = sourceKind(options);
   const previewRoot = await fs.mkdtemp(path.join(os.tmpdir(), "boot-source-preview-"));
   const paths = mapPaths(previewRoot);
@@ -166,6 +209,7 @@ async function previewWorkspaceSource(
       kind === "folder"
         ? await initFolderMap(remote, paths.mapDir)
         : await cloneMap(remote, paths.mapDir);
+    await pinSource(kind, paths.mapDir, options.mapCommit);
     await readWorkspaceMap(paths.mapDir);
     await writeLinkConfig(previewRoot, {
       kind,
@@ -175,6 +219,8 @@ async function previewWorkspaceSource(
     return {
       kind,
       state: "preview",
+      commit: await sourceCommit(kind, paths.mapDir),
+      pinned: Boolean(options.mapCommit),
       mapDir: paths.mapDir,
       inspectionRoot: previewRoot,
       transport,
@@ -196,12 +242,19 @@ export async function openWorkspaceSource(
   root: string,
   options: WorkspaceSourceOptions = {},
 ): Promise<WorkspaceSource> {
+  options = normalizedOptions(options);
   const absoluteRoot = path.resolve(root);
   const kind = sourceKind(options);
 
   // A fresh dry-run must not create the target's .boot directory just to take
   // a lock. Preview data lives entirely in an isolated temporary workspace.
   if (options.dryRun && !isLinked(absoluteRoot)) {
+    return previewWorkspaceSource(remote, options);
+  }
+  // A pinned preview needs an isolated checkout even when the target is linked.
+  // Verify the requested remote first, then leave the cached map untouched.
+  if (options.dryRun && options.mapCommit) {
+    await assertMatchingSource(absoluteRoot, remote, kind);
     return previewWorkspaceSource(remote, options);
   }
 
@@ -214,9 +267,12 @@ export async function openWorkspaceSource(
     await assertMatchingSource(absoluteRoot, remote, kind);
     const transport = await loadTransport(absoluteRoot);
     if (!options.dryRun) await transport.pull();
+    await pinSource(kind, transport.mapDir, options.mapCommit);
     return {
       kind,
       state: options.dryRun ? "cached" : "updated",
+      commit: await sourceCommit(kind, transport.mapDir),
+      pinned: Boolean(options.mapCommit),
       mapDir: mapPaths(absoluteRoot).mapDir,
       inspectionRoot: absoluteRoot,
       transport,

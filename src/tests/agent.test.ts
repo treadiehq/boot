@@ -10,7 +10,7 @@ import { envInit, envKeyImport, envSet } from "../commands/env";
 import { linkCommand } from "../commands/link";
 import { exportKeyBase64 } from "../core/secrets";
 import { isGitRepo } from "../core/git";
-import { isLinked } from "../core/map";
+import { isLinked, mapPaths } from "../core/map";
 import { parseDotenv } from "../core/env";
 import { readPlaceholder } from "../core/placeholder";
 import { CONFIG_FILE_NAME } from "../core/config";
@@ -130,6 +130,41 @@ describe.skipIf(!GIT_OK)("agent bootstrap (e2e)", () => {
 
     const env = parseDotenv(await fs.readFile(path.join(wsC, ".env"), "utf8"));
     expect(env.API_KEY).toBe("secret123");
+  });
+
+  it("realizes a pinned ephemeral workspace without identity, map writes, or pushes", async () => {
+    const ephemeralHome = path.join(root, "ephemeral-home");
+    const ephemeralWorkspace = path.join(root, "ephemeral-workspace");
+    const remoteBefore = execFileSync(
+      "git",
+      ["-C", mapRemote, "rev-parse", "HEAD"],
+      { stdio: "pipe" },
+    ).toString().trim();
+
+    await asMachine(ephemeralHome, () =>
+      agentCommand(mapRemote, ephemeralWorkspace, {
+        ephemeral: true,
+        mapCommit: remoteBefore,
+      }),
+    );
+
+    expect(isLinked(ephemeralWorkspace)).toBe(true);
+    expect(await readPlaceholder(path.join(ephemeralWorkspace, "apps", "api"))).not.toBeNull();
+    await expect(
+      fs.stat(path.join(ephemeralHome, "machine.json")),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+    expect(
+      execFileSync(
+        "git",
+        ["-C", mapPaths(ephemeralWorkspace).mapDir, "status", "--porcelain"],
+        { stdio: "pipe" },
+      ).toString().trim(),
+    ).toBe("");
+    expect(
+      execFileSync("git", ["-C", mapRemote, "rev-parse", "HEAD"], {
+        stdio: "pipe",
+      }).toString().trim(),
+    ).toBe(remoteBefore);
   });
 });
 

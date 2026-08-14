@@ -7,7 +7,11 @@ export function renderBootstrapResult(result: BootstrapResult): void {
   logger.heading(`Agent workspace — ${colors.cyan(result.root)}`);
   logger.info(
     colors.dim(
-      `Source: ${result.source.kind} · ${result.source.state} · Mode: ${result.mode}`,
+      `Source: ${result.source.kind} · ${result.source.state}` +
+        `${result.source.commit ? ` · Commit: ${result.source.commit}` : ""}` +
+        `${result.source.pinned ? " · Pinned" : ""}` +
+        `${result.ephemeral ? " · Ephemeral" : ""}` +
+        ` · Mode: ${result.mode}`,
     ),
   );
   logger.info();

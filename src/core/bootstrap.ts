@@ -1,7 +1,13 @@
 import path from "node:path";
+import { z } from "zod";
 import { CONTEXT_VERSION, writeWorkspaceContext } from "./context";
-import { buildWorkspaceDiagnostics, type WorkspaceDiagnostics } from "./diagnostics";
+import {
+  buildWorkspaceDiagnostics,
+  workspaceDiagnosticsSchema,
+  type WorkspaceDiagnostics,
+} from "./diagnostics";
 import { materializeAll } from "./env";
+import { fullGitShaSchema, parseFullGitSha } from "./git";
 import { hydratePlaceholder } from "./hydrate";
 import { loadMachineIdentity } from "./identity";
 import { getWorkspaceProvider } from "./localProvider";
@@ -43,6 +49,10 @@ export interface BootstrapOptions {
   hydrate?: string[];
   all?: boolean;
   folder?: boolean;
+  /** Exact Git map commit to realize. Real pinned runs must also be ephemeral. */
+  mapCommit?: string;
+  /** Realize target state without publishing machine or map state. */
+  ephemeral?: boolean;
 }
 
 export interface BootstrapFailure {
@@ -57,8 +67,11 @@ interface BootstrapBase {
   source: {
     kind: WorkspaceSourceKind;
     state: WorkspaceSourceState;
+    commit: string | null;
+    pinned: boolean;
   };
   dryRun: boolean;
+  ephemeral: boolean;
   warnings: string[];
   ready: boolean;
 }
@@ -87,9 +100,10 @@ export type BootstrapResult =
 
 export interface WorkspaceBootstrapOutput {
   schemaVersion: typeof BOOTSTRAP_RESULT_VERSION;
-  mode: BootstrapResult["mode"];
+  mode: "workspace";
   source: BootstrapResult["source"];
   dryRun: boolean;
+  ephemeral: boolean;
   ready: boolean;
   diagnostics: WorkspaceDiagnostics;
   applied: RealizationResult["applied"];
@@ -99,9 +113,10 @@ export interface WorkspaceBootstrapOutput {
 
 export interface CompatibilityBootstrapOutput {
   schemaVersion: typeof BOOTSTRAP_RESULT_VERSION;
-  mode: BootstrapResult["mode"];
+  mode: "compatibility";
   source: BootstrapResult["source"];
   dryRun: boolean;
+  ephemeral: boolean;
   ready: boolean;
   workspace: { root: string };
   reconciliation: {
@@ -119,6 +134,82 @@ export interface CompatibilityBootstrapOutput {
 export type BootstrapOutput =
   | WorkspaceBootstrapOutput
   | CompatibilityBootstrapOutput;
+
+const bootstrapSourceSchema = z
+  .object({
+    kind: z.enum(["git", "folder"]),
+    state: z.enum(["linked", "updated", "cached", "preview"]),
+    commit: fullGitShaSchema.nullable(),
+    pinned: z.boolean(),
+  })
+  .strict();
+
+const realizationItemSchema = z
+  .object({
+    kind: z.enum(["repository", "environment", "service", "command"]),
+    name: z.string(),
+  })
+  .strict();
+
+const bootstrapFailureSchema = realizationItemSchema
+  .extend({ message: z.string() })
+  .strict();
+
+const workspaceBootstrapOutputSchema = z
+  .object({
+    schemaVersion: z.literal(BOOTSTRAP_RESULT_VERSION),
+    mode: z.literal("workspace"),
+    source: bootstrapSourceSchema,
+    dryRun: z.boolean(),
+    ephemeral: z.boolean(),
+    ready: z.boolean(),
+    diagnostics: workspaceDiagnosticsSchema,
+    applied: z.array(realizationItemSchema),
+    failures: z.array(bootstrapFailureSchema),
+    warnings: z.array(z.string()),
+  })
+  .strict();
+
+const compatibilityBootstrapOutputSchema = z
+  .object({
+    schemaVersion: z.literal(BOOTSTRAP_RESULT_VERSION),
+    mode: z.literal("compatibility"),
+    source: bootstrapSourceSchema,
+    dryRun: z.boolean(),
+    ephemeral: z.boolean(),
+    ready: z.boolean(),
+    workspace: z.object({ root: z.string() }).strict(),
+    reconciliation: z
+      .object({
+        placeholders: z.number().int().nonnegative(),
+        cloned: z.number().int().nonnegative(),
+        skipped: z.number().int().nonnegative(),
+        plan: z.array(
+          z
+            .object({
+              relativePath: z.string(),
+              action: z.enum(["clone", "placeholder"]),
+            })
+            .strict(),
+        ),
+      })
+      .strict(),
+    hydration: z
+      .object({
+        planned: z.array(z.string()),
+        completed: z.array(z.string()),
+      })
+      .strict(),
+    environmentFiles: z.number().int().nonnegative(),
+    failures: z.array(bootstrapFailureSchema),
+    warnings: z.array(z.string()),
+  })
+  .strict();
+
+export const bootstrapOutputSchema = z.discriminatedUnion("mode", [
+  workspaceBootstrapOutputSchema,
+  compatibilityBootstrapOutputSchema,
+]);
 
 function hasCompatibilityOverrides(options: BootstrapOptions): boolean {
   return Boolean(options.eager) || Boolean(options.all) || (options.hydrate?.length ?? 0) > 0;
@@ -140,6 +231,15 @@ function profileForAgent(
 ): string | undefined {
   if (requested) return requested;
   return definition.profiles?.agent ? "agent" : undefined;
+}
+
+function bootstrapSource(source: WorkspaceSource): BootstrapResult["source"] {
+  return {
+    kind: source.kind,
+    state: source.state,
+    commit: source.commit,
+    pinned: source.pinned,
+  };
 }
 
 async function recordMachineState(
@@ -192,8 +292,9 @@ async function realizePublishedWorkspace(
       schemaVersion: BOOTSTRAP_RESULT_VERSION,
       mode: "workspace",
       root: path.resolve(root),
-      source: { kind: source.kind, state: source.state },
+      source: bootstrapSource(source),
       dryRun: true,
+      ephemeral: Boolean(options.ephemeral),
       plan,
       applied: [],
       failures: [],
@@ -218,15 +319,18 @@ async function realizePublishedWorkspace(
   }
 
   const warnings: string[] = [];
-  const stateWarning = await recordMachineState(root, source);
-  if (stateWarning) warnings.push(stateWarning);
+  if (!options.ephemeral) {
+    const stateWarning = await recordMachineState(root, source);
+    if (stateWarning) warnings.push(stateWarning);
+  }
 
   return {
     schemaVersion: BOOTSTRAP_RESULT_VERSION,
     mode: "workspace",
     root: path.resolve(root),
-    source: { kind: source.kind, state: source.state },
+    source: bootstrapSource(source),
     dryRun: false,
+    ephemeral: Boolean(options.ephemeral),
     plan: realization.plan,
     applied: realization.applied,
     failures: realization.failures,
@@ -343,7 +447,7 @@ async function realizeCompatibilityMap(
   }
 
   const warnings: string[] = [];
-  if (!options.dryRun) {
+  if (!options.dryRun && !options.ephemeral) {
     const stateWarning = await recordMachineState(root, source);
     if (stateWarning) warnings.push(stateWarning);
   }
@@ -352,8 +456,9 @@ async function realizeCompatibilityMap(
     schemaVersion: BOOTSTRAP_RESULT_VERSION,
     mode: "compatibility",
     root: path.resolve(root),
-    source: { kind: source.kind, state: source.state },
+    source: bootstrapSource(source),
     dryRun: Boolean(options.dryRun),
+    ephemeral: Boolean(options.ephemeral),
     reconciliation,
     hydration: { planned: selectedPaths, completed },
     environmentFiles,
@@ -374,10 +479,22 @@ export async function bootstrapAgentWorkspace(
   workspacePath = ".",
   options: BootstrapOptions = {},
 ): Promise<BootstrapResult> {
+  const mapCommit = options.mapCommit
+    ? parseFullGitSha(options.mapCommit)
+    : undefined;
+  if (mapCommit && !options.dryRun && !options.ephemeral) {
+    throw new Error(
+      "Pinned map runs must be ephemeral. Add `--ephemeral`, or use `--dry-run` to preview the pinned state.",
+    );
+  }
+  if (mapCommit && options.folder) {
+    throw new Error("Map commit pinning is available only for Git workspace maps.");
+  }
   const root = path.resolve(workspacePath);
   const source = await openWorkspaceSource(remote, root, {
     folder: options.folder,
     dryRun: options.dryRun,
+    mapCommit,
   });
   try {
     const definition = await readPublishedWorkspace(source.mapDir);
@@ -392,23 +509,25 @@ export async function bootstrapAgentWorkspace(
 
 export function bootstrapOutput(result: BootstrapResult): BootstrapOutput {
   if (result.mode === "workspace") {
-    return {
+    return bootstrapOutputSchema.parse({
       schemaVersion: result.schemaVersion,
       mode: result.mode,
       source: result.source,
       dryRun: result.dryRun,
+      ephemeral: result.ephemeral,
       ready: result.ready,
       diagnostics: buildWorkspaceDiagnostics(result.plan, result.root),
       applied: result.applied,
       failures: result.failures,
       warnings: result.warnings,
-    };
+    });
   }
-  return {
+  return bootstrapOutputSchema.parse({
     schemaVersion: result.schemaVersion,
     mode: result.mode,
     source: result.source,
     dryRun: result.dryRun,
+    ephemeral: result.ephemeral,
     ready: result.ready,
     workspace: { root: result.root },
     reconciliation: {
@@ -421,5 +540,5 @@ export function bootstrapOutput(result: BootstrapResult): BootstrapOutput {
     environmentFiles: result.environmentFiles,
     failures: result.failures,
     warnings: result.warnings,
-  };
+  });
 }

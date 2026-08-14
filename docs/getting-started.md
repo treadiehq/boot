@@ -95,11 +95,11 @@ curl -fsSL https://useboot.co/agent.sh | bash -s -- \
   git@github.com:me/code-map.git /workspace --profile agent
 ```
 
-The adapter adds `--run-setup --json` to the underlying command:
+The adapter adds `--run-setup --ephemeral --json` to the underlying command:
 
 ```bash
 boot agent git@github.com:me/code-map.git /workspace \
-  --profile agent --run-setup --json
+  --profile agent --run-setup --ephemeral --json
 ```
 
 The profile is resolved before repositories are created, so excluded
@@ -107,3 +107,7 @@ repositories are not cloned or represented by new placeholders. Tools are
 verified, never installed; services are verified, and started only when
 `--start` is supplied and `boot.yaml` declares how. Missing selected requirements
 produce diagnostics and a nonzero exit.
+
+Ephemeral mode changes the target workspace but does not create or push machine
+state. Add `--map-commit <full-sha>` to consume one immutable Git map revision;
+real pinned runs require ephemeral mode.

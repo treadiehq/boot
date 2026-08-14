@@ -6,6 +6,7 @@ const providerPlanMock = vi.hoisted(() => vi.fn());
 const providerApplyMock = vi.hoisted(() => vi.fn());
 const writeContextMock = vi.hoisted(() => vi.fn());
 const cleanupMock = vi.hoisted(() => vi.fn());
+const MAP_COMMIT = "a".repeat(40);
 
 vi.mock("../core/workspaceSource", () => ({
   openWorkspaceSource: openSourceMock,
@@ -98,6 +99,8 @@ describe("bootstrapAgentWorkspace", () => {
     openSourceMock.mockReset().mockResolvedValue({
       kind: "git",
       state: "linked",
+      commit: MAP_COMMIT,
+      pinned: false,
       mapDir: "/map",
       inspectionRoot: "/workspace",
       cleanup: cleanupMock,
@@ -149,7 +152,13 @@ describe("bootstrapAgentWorkspace", () => {
     expect(output).toMatchObject({
       schemaVersion: 1,
       mode: "workspace",
-      source: { kind: "git", state: "linked" },
+      source: {
+        kind: "git",
+        state: "linked",
+        commit: MAP_COMMIT,
+        pinned: false,
+      },
+      ephemeral: false,
       ready: true,
       diagnostics: {
         workspace: {
@@ -176,6 +185,8 @@ describe("bootstrapAgentWorkspace", () => {
     openSourceMock.mockResolvedValue({
       kind: "git",
       state: "preview",
+      commit: MAP_COMMIT,
+      pinned: false,
       mapDir: "/preview/.boot/map",
       inspectionRoot: "/preview",
       cleanup: cleanupMock,
@@ -194,5 +205,52 @@ describe("bootstrapAgentWorkspace", () => {
     if (result.mode === "workspace") {
       expect(result.plan.root).toBe("/workspace");
     }
+  });
+
+  it("allows dry-run pinning without requiring ephemeral mode", async () => {
+    openSourceMock.mockResolvedValue({
+      kind: "git",
+      state: "preview",
+      commit: MAP_COMMIT,
+      pinned: true,
+      mapDir: "/preview/.boot/map",
+      inspectionRoot: "/preview",
+      cleanup: cleanupMock,
+    });
+
+    await expect(
+      bootstrapAgentWorkspace("git@example.test:map.git", "/workspace", {
+        dryRun: true,
+        mapCommit: MAP_COMMIT.toUpperCase(),
+      }),
+    ).resolves.toMatchObject({
+      dryRun: true,
+      ephemeral: false,
+      source: { commit: MAP_COMMIT, pinned: true },
+    });
+    expect(openSourceMock).toHaveBeenCalledWith(
+      "git@example.test:map.git",
+      "/workspace",
+      expect.objectContaining({ mapCommit: MAP_COMMIT, dryRun: true }),
+    );
+  });
+
+  it("requires real pinned runs to be ephemeral", async () => {
+    await expect(
+      bootstrapAgentWorkspace("git@example.test:map.git", "/workspace", {
+        mapCommit: MAP_COMMIT,
+      }),
+    ).rejects.toThrow(/must be ephemeral/i);
+    expect(openSourceMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects abbreviated and non-hex map commits at the core boundary", async () => {
+    await expect(
+      bootstrapAgentWorkspace("git@example.test:map.git", "/workspace", {
+        dryRun: true,
+        mapCommit: "abc123",
+      }),
+    ).rejects.toThrow(/full 40- or 64-character hexadecimal SHA/i);
+    expect(openSourceMock).not.toHaveBeenCalled();
   });
 });

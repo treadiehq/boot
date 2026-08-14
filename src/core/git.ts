@@ -1,6 +1,7 @@
 import { execa, type Options } from "execa";
 import { existsSync } from "node:fs";
 import path from "node:path";
+import { z } from "zod";
 import {
   quoteUserValue,
   sanitizeRemoteUrl,
@@ -17,6 +18,22 @@ interface GitResult {
   stdout: string;
   stderr: string;
   errorCode?: string;
+}
+
+export const fullGitShaSchema = z
+  .string()
+  .regex(
+    /^(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})$/,
+    "Map commit must be a full 40- or 64-character hexadecimal SHA.",
+  )
+  .transform((value) => value.toLowerCase());
+
+export function parseFullGitSha(value: string): string {
+  const parsed = fullGitShaSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new Error("Map commit must be a full 40- or 64-character hexadecimal SHA.");
+  }
+  return parsed.data;
 }
 
 async function git(args: string[], opts: Options = {}): Promise<GitResult> {
@@ -155,6 +172,61 @@ export async function checkoutBranch(repoPath: string, branch: string): Promise<
   }
 }
 
+/** Check out one exact commit without attaching the map working copy to a branch. */
+export async function checkoutCommit(repoPath: string, commit: string): Promise<void> {
+  const validated = parseFullGitSha(commit);
+  const status = await git(["-C", repoPath, "status", "--porcelain"]);
+  if (status.exitCode !== 0) {
+    throw new Error(
+      "Could not inspect the workspace map before pinning." +
+        failureReason(status.stderr || status.stdout) +
+        " Check the linked repository, then retry.",
+    );
+  }
+  if (status.stdout.trim().length > 0) {
+    throw new Error(
+      "Could not pin the workspace map because its working tree has local changes. " +
+        "Publish or discard those map changes, then retry.",
+    );
+  }
+
+  const resolved = await git([
+    "-C",
+    repoPath,
+    "rev-parse",
+    "--verify",
+    `${validated}^{commit}`,
+  ]);
+  if (resolved.exitCode !== 0) {
+    throw new Error(
+      `Could not pin the workspace map to commit ${quoteUserValue(validated)}.` +
+        failureReason(resolved.stderr || resolved.stdout) +
+        " Check that the full commit SHA exists in the map repository, then retry.",
+    );
+  }
+  const exactCommit = resolved.stdout.trim().toLowerCase();
+  if (exactCommit !== validated) {
+    throw new Error(
+      `Could not pin the workspace map because ${quoteUserValue(validated)} did not resolve exactly.`,
+    );
+  }
+
+  const res = await git(["-C", repoPath, "checkout", "--detach", exactCommit]);
+  if (res.exitCode !== 0) {
+    throw new Error(
+      `Could not pin the workspace map to commit ${quoteUserValue(validated)}.` +
+        failureReason(res.stderr || res.stdout) +
+        " Check that the full commit SHA exists in the map repository, then retry.",
+    );
+  }
+  const head = await getLastCommit(repoPath);
+  if (head?.toLowerCase() !== exactCommit) {
+    throw new Error(
+      `Could not verify the workspace map at commit ${quoteUserValue(validated)}.`,
+    );
+  }
+}
+
 /* ------------------------------------------------------------------ *
  * Map-repo helpers — used by the sync transport to manage the small  *
  * git repository that carries the workspace map between machines.    *
@@ -238,8 +310,51 @@ export async function gitHasUnpushed(dir: string): Promise<boolean> {
   return Number.parseInt(res.stdout.trim() || "0", 10) > 0;
 }
 
+/**
+ * A pinned map intentionally leaves HEAD detached. Before an ordinary pull,
+ * reattach to the clone's default local branch so later syncs behave normally.
+ */
+async function restoreMapBranch(dir: string): Promise<void> {
+  const current = await git(["-C", dir, "symbolic-ref", "--quiet", "--short", "HEAD"]);
+  if (current.exitCode === 0) return;
+
+  const remoteHead = await git([
+    "-C",
+    dir,
+    "symbolic-ref",
+    "--quiet",
+    "--short",
+    "refs/remotes/origin/HEAD",
+  ]);
+  let branch = remoteHead.stdout.trim().replace(/^origin\//, "");
+  if (!branch) {
+    const locals = await git([
+      "-C",
+      dir,
+      "for-each-ref",
+      "--format=%(refname:short)",
+      "refs/heads",
+    ]);
+    branch = locals.stdout
+      .split(/\r?\n/)
+      .map((candidate) => candidate.trim())
+      .find(Boolean) ?? "";
+  }
+  if (!branch) return;
+
+  const checkout = await git(["-C", dir, "checkout", branch]);
+  if (checkout.exitCode !== 0) {
+    throw new Error(
+      "Could not return the workspace map to its update branch." +
+        failureReason(checkout.stderr || checkout.stdout) +
+        " Check the linked repository for local changes, then retry.",
+    );
+  }
+}
+
 /** Pull with rebase. Tolerates an empty remote / missing upstream; throws on real conflicts. */
 export async function gitPullRebase(dir: string): Promise<void> {
+  await restoreMapBranch(dir);
   const res = await git(["-C", dir, "pull", "--rebase", "--autostash"]);
   if (res.exitCode === 0) return;
   const detail = res.stderr || res.stdout;

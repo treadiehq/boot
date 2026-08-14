@@ -186,4 +186,51 @@ describe("CLI help", () => {
       expect(findCommand(program, path).description(), path).toContain("foreground");
     }
   });
+
+  it("documents and parses full map commits with opt-in ephemeral mode", () => {
+    const agent = findCommand(buildProgram(), "agent");
+    const help = renderHelp(agent);
+    const sha = "A".repeat(64);
+
+    expect(help).toContain("--map-commit <sha>");
+    expect(help).toContain("--ephemeral");
+    expect(agent.getOptionValue("ephemeral")).toBe(false);
+
+    agent.parseOptions(["--map-commit", sha, "--ephemeral"]);
+    expect(agent.getOptionValue("mapCommit")).toBe(sha.toLowerCase());
+    expect(agent.getOptionValue("ephemeral")).toBe(true);
+  });
+
+  it.each([
+    "abc123",
+    "g".repeat(40),
+    "a".repeat(39),
+    "a".repeat(41),
+    "a".repeat(63),
+    "a".repeat(65),
+  ])("rejects invalid map commit %j before running the agent", async (commit) => {
+    const errors: string[] = [];
+    const program = buildProgram();
+    for (const command of allCommands(program)) {
+      command
+        .exitOverride()
+        .configureOutput({ writeErr: (text) => errors.push(text) });
+    }
+
+    await expect(
+      program.parseAsync([
+        "node",
+        "boot",
+        "agent",
+        "git@example.test:map.git",
+        "/workspace",
+        "--map-commit",
+        commit,
+      ]),
+    ).rejects.toMatchObject({ code: "commander.invalidArgument" });
+
+    expect(errors.join("")).toContain(
+      "Map commit must be a full 40- or 64-character hexadecimal SHA.",
+    );
+  });
 });
