@@ -29,7 +29,9 @@
     "video:audio": "node video/generate-audio.mjs",
     "video:check": "tsc --noEmit -p video/tsconfig.json",
     "video:studio": "pnpm video:audio && remotion studio video/index.ts",
-    "video:render": "pnpm video:audio && remotion render video/index.ts BootLaunch out/boot-launch.mp4 --codec=h264"
+    "video:render": "pnpm video:audio && remotion render video/index.ts BootLaunch out/boot-launch.mp4 --codec=h264",
+    "video:still:v037": "pnpm video:audio && remotion still video/index.ts AgentBootstrapUpdate out/boot-v0.3.7-preview.png --frame=320",
+    "video:render:v037": "pnpm video:audio && remotion render video/index.ts AgentBootstrapUpdate out/boot-v0.3.7.mp4 --codec=h264"
   },
   "keywords": [
     "cli",

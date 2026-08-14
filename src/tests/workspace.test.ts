@@ -98,6 +98,17 @@ describe("Workspace definition", () => {
     },
   );
 
+  it("accepts a repository at the Workspace root", () => {
+    const candidate = {
+      ...definition(),
+      repositories: { boot: { path: "." } },
+      profiles: undefined,
+      defaults: undefined,
+      commands: undefined,
+    };
+    expect(workspaceDefinitionSchema.safeParse(candidate).success).toBe(true);
+  });
+
   it("rejects duplicate and nested repository topology", () => {
     const duplicate = {
       ...definition(),
@@ -119,6 +130,17 @@ describe("Workspace definition", () => {
       },
     };
     expect(workspaceDefinitionSchema.safeParse(nested).success).toBe(false);
+
+    const nestedUnderRoot = {
+      ...duplicate,
+      repositories: {
+        root: { path: "." },
+        child: { path: "apps/api" },
+      },
+    };
+    expect(
+      workspaceDefinitionSchema.safeParse(nestedUnderRoot).success,
+    ).toBe(false);
   });
 
   it("never includes secret values in the object model", () => {

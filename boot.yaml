@@ -1,0 +1,42 @@
+schemaVersion: 1
+workspace:
+  id: treadiehq/boot
+  name: Boot
+  description: Boot CLI product and release workspace
+repositories:
+  boot:
+    path: .
+    role: product, CLI, documentation, and release media
+tools:
+  node: ">=18"
+  pnpm: 10.34.3
+commands:
+  setup:
+    run: pnpm install --frozen-lockfile
+    repository: boot
+  dev:
+    run: pnpm dev
+    repository: boot
+  test:
+    run: pnpm test:run
+    repository: boot
+  lint:
+    run: pnpm lint
+    repository: boot
+  video-check:
+    run: pnpm video:check
+    repository: boot
+  video-still-v037:
+    run: pnpm video:still:v037
+    repository: boot
+  video-render-v037:
+    run: pnpm video:render:v037
+    repository: boot
+profiles:
+  local:
+    repositories: all
+    tools: all
+    commands: all
+    readOnly: false
+defaults:
+  profile: local

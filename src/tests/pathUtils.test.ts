@@ -1,6 +1,9 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { resolveWithinRoot } from "../core/pathUtils";
+import {
+  resolveWithinRoot,
+  resolveWorkspaceRepositoryPath,
+} from "../core/pathUtils";
 
 describe("resolveWithinRoot", () => {
   it("resolves a portable path beneath a workspace", () => {
@@ -21,5 +24,13 @@ describe("resolveWithinRoot", () => {
     expect(() => resolveWithinRoot(path.resolve("workspace"), "../outside")).toThrow(
       /must be normalized and must not contain '\.\.'/,
     );
+  });
+});
+
+describe("resolveWorkspaceRepositoryPath", () => {
+  it("resolves the explicit Workspace-root repository", () => {
+    const root = path.resolve("workspace");
+
+    expect(resolveWorkspaceRepositoryPath(root, ".")).toBe(root);
   });
 });

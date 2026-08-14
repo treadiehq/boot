@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { portableRelativePathSchema } from "./pathUtils";
+import { workspaceRepositoryPathSchema } from "./pathUtils";
 import { quoteUserValue } from "./userErrors";
 
 export const WORKSPACE_SCHEMA_VERSION = 1 as const;
@@ -25,7 +25,7 @@ export type Materialization = z.infer<typeof materializationSchema>;
 export const repositoryDefinitionSchema = z
   .object({
     url: z.string().min(1).optional(),
-    path: portableRelativePathSchema,
+    path: workspaceRepositoryPathSchema,
     role: z.string().min(1).optional(),
     ref: z.string().min(1).optional(),
     hydrate: materializationSchema.optional(),
@@ -139,7 +139,10 @@ const repositoryRecordSchema = z
       const parent = paths[index]!;
       for (let candidateIndex = index + 1; candidateIndex < paths.length; candidateIndex += 1) {
         const candidate = paths[candidateIndex]!;
-        if (candidate.path.startsWith(`${parent.path}/`)) {
+        if (
+          parent.path === "." ||
+          candidate.path.startsWith(`${parent.path}/`)
+        ) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             path: [candidate.id, "path"],

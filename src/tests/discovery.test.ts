@@ -31,6 +31,27 @@ afterEach(async () => {
 });
 
 describe("discoverWorkspace", () => {
+  it("discovers a Workspace whose root is itself a repository", async () => {
+    const standalone = path.join(root, "standalone");
+    await fs.mkdir(path.join(standalone, ".git"), { recursive: true });
+    await fs.writeFile(
+      path.join(standalone, "package.json"),
+      JSON.stringify({
+        name: "standalone",
+        packageManager: "pnpm@10.2.0",
+        scripts: { test: "vitest run" },
+      }),
+    );
+
+    const discovery = await discoverWorkspace(standalone);
+
+    expect(discovery.repositories).toBe(1);
+    expect(discovery.definition.repositories.standalone).toMatchObject({
+      path: ".",
+      hydrate: "manual",
+    });
+  });
+
   it("discovers repositories, tools, services, commands, and environment names", async () => {
     const discovery = await discoverWorkspace(root);
     expect(discovery.repositories).toBe(1);

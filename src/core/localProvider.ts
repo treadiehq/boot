@@ -37,7 +37,7 @@ import {
 } from "./requirements";
 import { keyExists, loadKey } from "./secrets";
 import { startServices } from "./startup";
-import { resolveWithinRoot } from "./pathUtils";
+import { resolveWorkspaceRepositoryPath } from "./pathUtils";
 import {
   quoteUserValue,
   sanitizeRemoteUrl,
@@ -53,7 +53,7 @@ async function inspectRepository(
   root: string,
   repository: ResolvedRepository,
 ): Promise<RepositoryPlan> {
-  const repositoryPath = resolveWithinRoot(root, repository.path);
+  const repositoryPath = resolveWorkspaceRepositoryPath(root, repository.path);
   if (isGitRepo(repositoryPath)) {
     const [currentRef, dirty, currentRemote] = await Promise.all([
       getCurrentBranch(repositoryPath),
@@ -224,7 +224,7 @@ async function updatePlaceholder(
   root: string,
   repository: ResolvedRepository,
 ): Promise<void> {
-  const repositoryPath = resolveWithinRoot(root, repository.path);
+  const repositoryPath = resolveWorkspaceRepositoryPath(root, repository.path);
   const existing = await readPlaceholder(repositoryPath);
   const metadata = buildPlaceholderMeta({
     name: repository.id,
@@ -294,7 +294,10 @@ export class LocalWorkspaceProvider implements WorkspaceProvider {
 
     for (const item of plan.repositories) {
       const repository = byId.get(item.id)!;
-      const repositoryPath = resolveWithinRoot(absoluteRoot, repository.path);
+      const repositoryPath = resolveWorkspaceRepositoryPath(
+        absoluteRoot,
+        repository.path,
+      );
       try {
         if (item.action === "clone" || item.action === "placeholder") {
           const result = await reconcileFromMap(absoluteRoot, [sharedRepo(repository)], {
@@ -402,7 +405,7 @@ export class LocalWorkspaceProvider implements WorkspaceProvider {
       for (const command of setupCommands) {
         const repository = command.repository ? byId.get(command.repository) : undefined;
         const cwd = repository
-          ? resolveWithinRoot(absoluteRoot, repository.path)
+          ? resolveWorkspaceRepositoryPath(absoluteRoot, repository.path)
           : absoluteRoot;
         try {
           const result = await execaCommand(command.run, {

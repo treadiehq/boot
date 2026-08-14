@@ -63,6 +63,20 @@ export const portableRelativePathSchema = z.string().superRefine((value, ctx) =>
 
 export type PortableRelativePath = z.infer<typeof portableRelativePathSchema>;
 
+/**
+ * A repository in a Workspace definition may be the Workspace root itself.
+ * Other persisted Boot paths remain non-root to prevent generated state from
+ * targeting the whole Workspace accidentally.
+ */
+export const workspaceRepositoryPathSchema = z.union([
+  z.literal("."),
+  portableRelativePathSchema,
+]);
+
+export type WorkspaceRepositoryPath = z.infer<
+  typeof workspaceRepositoryPathSchema
+>;
+
 /** Resolve a persisted relative path and prove that it remains under `root`. */
 export function resolveWithinRoot(root: string, relativePath: string): string {
   const parsed = portableRelativePathSchema.safeParse(relativePath);
@@ -81,4 +95,20 @@ export function resolveWithinRoot(root: string, relativePath: string): string {
     );
   }
   return target;
+}
+
+/** Resolve a repository path, including the explicit `.` Workspace-root form. */
+export function resolveWorkspaceRepositoryPath(
+  root: string,
+  relativePath: string,
+): string {
+  const parsed = workspaceRepositoryPathSchema.safeParse(relativePath);
+  if (!parsed.success) {
+    throw new Error(
+      `Workspace repository path ${quoteUserValue(relativePath)} is invalid: ${
+        parsed.error.issues[0]?.message
+      }. Use "." or a relative path inside the workspace.`,
+    );
+  }
+  return parsed.data === "." ? path.resolve(root) : resolveWithinRoot(root, parsed.data);
 }
