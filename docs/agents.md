@@ -69,14 +69,16 @@ At the beginning of a task, run `boot inspect --json`.
 When the workspace has been published through a workspace map:
 
 ```bash
-boot agent git@github.com:acme/billing-map.git /workspace \
-  --profile agent --run-setup --json
+curl -fsSL https://useboot.co/agent.sh | bash -s -- \
+  git@github.com:acme/billing-map.git /workspace --profile agent
 ```
 
-`boot agent` is the one-shot bootstrap contract for CI, cloud VMs, and fresh
-containers. On the first run it links the published map; later runs pull and
-reapply it safely. It uses the published `agent` profile by default when one
-exists, or accepts another profile with `--profile`.
+The adapter installs Boot when needed and invokes `boot agent` with
+`--run-setup --json`. `boot agent` remains the one-shot bootstrap contract for
+CI, cloud VMs, and fresh containers. On the first run it links the published
+map; later runs pull and reapply it safely. It uses the published `agent`
+profile by default when one exists, or accepts another profile with
+`--profile`.
 
 The JSON result includes:
 

@@ -87,15 +87,15 @@ boot up ~/code --profile local
 
 The `local` profile can select the full workspace.
 
-For a fresh CI runner or cloud agent, the link-or-pull and realization steps
-are one idempotent command:
+For a fresh CI runner or cloud agent, install Boot and run the link-or-pull
+workflow through one idempotent adapter:
 
 ```bash
-boot agent git@github.com:me/code-map.git /workspace --profile agent
+curl -fsSL https://useboot.co/agent.sh | bash -s -- \
+  git@github.com:me/code-map.git /workspace --profile agent
 ```
 
-Add `--run-setup` when the selected setup commands should execute, and `--json`
-when an agent needs one versioned, secret-free result on stdout:
+The adapter adds `--run-setup --json` to the underlying command:
 
 ```bash
 boot agent git@github.com:me/code-map.git /workspace \

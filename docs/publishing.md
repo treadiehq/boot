@@ -35,12 +35,15 @@ it does not make the map safe to publish anywhere. Keep the map private and
 control access to it.
 
 A fresh cloud environment can acquire the map and realize its selected profile
-in one idempotent command:
+without a separate installation step:
 
 ```bash
-boot agent git@github.com:acme/billing-map.git /workspace \
-  --profile agent --run-setup --json
+curl -fsSL https://useboot.co/agent.sh | bash -s -- \
+  git@github.com:acme/billing-map.git /workspace --profile agent
 ```
+
+The adapter installs Boot when needed and runs the idempotent `boot agent`
+contract with `--run-setup --json`.
 
 Provision the Boot secret key through the environment's secret-management
 channel when the profile requires encrypted values. The key is never included

@@ -55,18 +55,26 @@ boot link git@github.com:acme/billing-map.git ~/code
 boot save ~/code
 ```
 
-Then prepare any fresh VM, container, or CI runner with one Boot command:
+Then prepare any fresh VM, container, or CI runner without a separate install
+step:
+
+```bash
+curl -fsSL https://useboot.co/agent.sh | bash -s -- \
+  git@github.com:acme/billing-map.git /workspace --profile agent
+```
+
+The adapter installs Boot when needed, then runs the provider-neutral,
+idempotent contract:
 
 ```bash
 boot agent git@github.com:acme/billing-map.git /workspace \
   --profile agent --run-setup --json
 ```
 
-The command is provider-neutral and safe to rerun. It acquires the workspace
-map, realizes only the selected profile, materializes available encrypted
-environment values, optionally runs declared setup commands, and returns
-secret-free readiness diagnostics. A machine that needs Boot-managed secrets
-must have the workspace key provisioned before bootstrap.
+It acquires the workspace map, realizes only the selected profile, materializes
+available encrypted environment values, runs declared setup commands, and
+returns secret-free readiness diagnostics. A machine that needs Boot-managed
+secrets must have the workspace key provisioned before bootstrap.
 
 ## What Boot handles
 
