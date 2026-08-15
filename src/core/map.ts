@@ -143,10 +143,6 @@ export function mapPaths(root: string): MapPaths {
   };
 }
 
-export function machineStatePath(mapDir: string, machineId: string): string {
-  return path.join(mapDir, MACHINES_DIR, `${machineId}.json`);
-}
-
 /** A workspace is "linked" once its map repo has been cloned locally. */
 export function isLinked(root: string): boolean {
   return existsSync(mapPaths(root).mapDir);
@@ -210,38 +206,6 @@ export async function writeWorkspaceMap(mapDir: string, map: WorkspaceMap): Prom
   const file = path.join(mapDir, WORKSPACE_MAP_FILE);
   const validated = workspaceMapSchema.parse(map);
   await writeFileAtomic(file, `${JSON.stringify(validated, null, 2)}\n`);
-}
-
-export async function readMachineState(
-  mapDir: string,
-  machineId: string,
-): Promise<MachineState | null> {
-  const file = machineStatePath(mapDir, machineId);
-
-  let raw: string;
-  try {
-    raw = await fs.readFile(file, "utf8");
-  } catch (error) {
-    if (isFileNotFoundError(error)) return null;
-    throw fileReadError("machine state", file, error);
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    throw new Error(
-      `Machine state at ${quoteUserValue(file, 500)} is not valid JSON. Delete the file, then rerun the command to recreate it.`,
-    );
-  }
-
-  const result = machineStateSchema.safeParse(parsed);
-  if (!result.success) {
-    throw new Error(
-      `Machine state at ${quoteUserValue(file, 500)} has an invalid format (${formatIssues(result.error)}). Delete the file, then rerun the command to recreate it.`,
-    );
-  }
-  return result.data;
 }
 
 export async function writeMachineState(mapDir: string, state: MachineState): Promise<void> {

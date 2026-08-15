@@ -6,7 +6,6 @@ import {
   emptyWorkspaceMap,
   machineStateFromScan,
   mergeReposIntoMap,
-  readMachineState,
   readWorkspaceMap,
   sharedRepoFromEntry,
   writeMachineState,
@@ -134,7 +133,7 @@ describe("workspace map + machine state round-trip", () => {
     expect(await readWorkspaceMap(dir)).toBeNull();
   });
 
-  it("writes machine state under machines/<id>.json and reads it back", async () => {
+  it("writes machine state under machines/<id>.json", async () => {
     const state = machineStateFromScan(identity, "/Users/dev/code", [
       repo({ relativePath: "apps/kplane", hydrate: { status: "placeholder", strategy: "manual" } }),
     ]);
@@ -142,13 +141,5 @@ describe("workspace map + machine state round-trip", () => {
 
     const onDisk = await fs.stat(path.join(dir, "machines", "machine-1.json"));
     expect(onDisk.isFile()).toBe(true);
-
-    const loaded = await readMachineState(dir, "machine-1");
-    expect(loaded?.hostname).toBe("mac-mini");
-    expect(loaded?.repos["apps/kplane"]).toEqual({
-      hydrateStatus: "placeholder",
-      lastCommit: "abc123",
-      dirty: false,
-    });
   });
 });
