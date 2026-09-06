@@ -1,0 +1,273 @@
+{
+  "schemaVersion": 1,
+  "measuredAt": "2026-09-06T19:44:13.736Z",
+  "implementationCommit": "b0174933eeb8fa94e75443bba009a79e00963976",
+  "platform": "darwin",
+  "architecture": "arm64",
+  "node": "v22.23.1",
+  "cpu": "Apple M3 Max",
+  "logicalCpus": 14,
+  "memoryBytes": 38654705664,
+  "backend": "apfs-clone",
+  "trackedPayloadBytes": 33554432,
+  "dependencies": {
+    "bytes": 832560523,
+    "files": 27491
+  },
+  "preparationMs": 20194.069959,
+  "methodology": "One local sample per mode/count, rotated mode order, prepared dependencies with network/install time excluded. Each batch starts with a fresh store; Boot seed creation is included. Ready means a new process successfully imported yaml. Boot uses its Node API and managed launch; plain Git uses direct Node launch. Full-copy dependency baselines use ordinary writes, never reflinks/hard links. Physical volume allocation is measured after clean unmount/remount; source preparation and global Boot registry/helper cache are outside the per-batch baseline. No AI inference is measured.",
+  "rows": [
+    {
+      "mode": "boot-cow",
+      "sessions": 1,
+      "creationMs": [
+        14029.556499999999
+      ],
+      "readyMs": [
+        14084.429083000003
+      ],
+      "launchMs": [
+        54.86908300000505
+      ],
+      "cleanupMs": 6223.2358749999985,
+      "physicalGrowthBytes": 92073984,
+      "growthAfterEditsBytes": 1048576,
+      "reclaimedBytes": 93102080,
+      "retainedOverheadBytes": 20480
+    },
+    {
+      "mode": "git-worktree",
+      "sessions": 1,
+      "creationMs": [
+        10947.651334000002
+      ],
+      "readyMs": [
+        10996.035417
+      ],
+      "launchMs": [
+        48.378834000002826
+      ],
+      "cleanupMs": 2912.1389160000035,
+      "physicalGrowthBytes": 961040384,
+      "growthAfterEditsBytes": 0,
+      "reclaimedBytes": 960995328,
+      "retainedOverheadBytes": 45056
+    },
+    {
+      "mode": "git-clone",
+      "sessions": 1,
+      "creationMs": [
+        13869.404333000006
+      ],
+      "readyMs": [
+        13918.128665999997
+      ],
+      "launchMs": [
+        48.72024999999849
+      ],
+      "cleanupMs": 1887.3309169999993,
+      "physicalGrowthBytes": 994598912,
+      "growthAfterEditsBytes": 0,
+      "reclaimedBytes": 994582528,
+      "retainedOverheadBytes": 16384
+    },
+    {
+      "mode": "git-worktree",
+      "sessions": 4,
+      "creationMs": [
+        12726.124417000014,
+        6630.504125000007,
+        6079.432917000013,
+        6151.255958000009
+      ],
+      "readyMs": [
+        12770.14583400001,
+        6680.7217500000115,
+        6122.292417000004,
+        6198.570333000011
+      ],
+      "launchMs": [
+        44.0178339999984,
+        50.215416999999434,
+        42.856750000006286,
+        47.31183299999975
+      ],
+      "cleanupMs": 9814.658458000005,
+      "physicalGrowthBytes": 3844653056,
+      "growthAfterEditsBytes": 0,
+      "reclaimedBytes": 3844661248,
+      "retainedOverheadBytes": -8192
+    },
+    {
+      "mode": "git-clone",
+      "sessions": 4,
+      "creationMs": [
+        11959.641000000003,
+        9203.665375000011,
+        7389.6574580000015,
+        7248.05345799998
+      ],
+      "readyMs": [
+        12001.493500000011,
+        9251.891415999999,
+        7434.740458000015,
+        7304.281290999992
+      ],
+      "launchMs": [
+        41.84870800000499,
+        48.22387499999604,
+        45.080584000010276,
+        56.22508299999754
+      ],
+      "cleanupMs": 7570.974583000003,
+      "physicalGrowthBytes": 3978592256,
+      "growthAfterEditsBytes": 0,
+      "reclaimedBytes": 3978555392,
+      "retainedOverheadBytes": 36864
+    },
+    {
+      "mode": "boot-cow",
+      "sessions": 4,
+      "creationMs": [
+        14710.981457999995,
+        6933.147708000004,
+        7150.068041999999,
+        6911.2300000000105
+      ],
+      "readyMs": [
+        14765.072041999985,
+        6992.590415999992,
+        7214.700375000015,
+        6963.585459000024
+      ],
+      "launchMs": [
+        54.087541000015335,
+        59.43979100001161,
+        64.62995800000499,
+        52.352542000007816
+      ],
+      "cleanupMs": 20844.860665999993,
+      "physicalGrowthBytes": 129802240,
+      "growthAfterEditsBytes": 4194304,
+      "reclaimedBytes": 133992448,
+      "retainedOverheadBytes": 4096
+    },
+    {
+      "mode": "git-clone",
+      "sessions": 8,
+      "creationMs": [
+        12613.882624999998,
+        8541.149082999997,
+        7503.676792000013,
+        7644.565917000029,
+        7202.500457999995,
+        6883.205166,
+        7347.061832999985,
+        7300.315708999988
+      ],
+      "readyMs": [
+        12671.706208999996,
+        8589.452250000002,
+        7548.134874999989,
+        7686.777291999984,
+        7244.722499999974,
+        6923.212499999965,
+        7395.921457999968,
+        7344.253334000008
+      ],
+      "launchMs": [
+        57.81570899998769,
+        48.30174999998417,
+        44.45629099998041,
+        42.20962499995949,
+        42.22058299998753,
+        40.005833000002895,
+        48.85791700001573,
+        43.93604100000812
+      ],
+      "cleanupMs": 15567.108750000014,
+      "physicalGrowthBytes": 7957516288,
+      "growthAfterEditsBytes": 0,
+      "reclaimedBytes": 7957475328,
+      "retainedOverheadBytes": 40960
+    },
+    {
+      "mode": "boot-cow",
+      "sessions": 8,
+      "creationMs": [
+        14638.507334000024,
+        6812.78683300002,
+        6892.838958000008,
+        6867.260750000016,
+        6931.334458000027,
+        7100.524915999966,
+        6916.127875000006,
+        6931.407041999977
+      ],
+      "readyMs": [
+        14693.478917,
+        6866.768625000026,
+        6945.798833000008,
+        6920.783333999978,
+        6986.674915999989,
+        7157.089500000002,
+        6972.021624999994,
+        6992.529916999978
+      ],
+      "launchMs": [
+        54.968208999955095,
+        53.979916999989655,
+        52.95737499999814,
+        53.5202500000014,
+        55.338249999971595,
+        56.56225000001723,
+        55.89200000005076,
+        61.12116599996807
+      ],
+      "cleanupMs": 38928.09058300004,
+      "physicalGrowthBytes": 179179520,
+      "growthAfterEditsBytes": 8388608,
+      "reclaimedBytes": 187559936,
+      "retainedOverheadBytes": 8192
+    },
+    {
+      "mode": "git-worktree",
+      "sessions": 8,
+      "creationMs": [
+        11332.570540999994,
+        8821.15850000002,
+        5925.42395799997,
+        6058.559750000015,
+        6116.423875000037,
+        6131.479292000004,
+        6234.833166999975,
+        6276.241500000004
+      ],
+      "readyMs": [
+        11374.704957999988,
+        8864.328207999992,
+        5967.601957999985,
+        6097.138625000021,
+        6156.67083300004,
+        6170.995916999993,
+        6277.42412500002,
+        6319.293957999966
+      ],
+      "launchMs": [
+        42.131375000055414,
+        43.168124999967404,
+        42.175708000024315,
+        38.57741600001464,
+        40.24541600001976,
+        39.515458999958355,
+        42.58962500002235,
+        43.05045899999095
+      ],
+      "cleanupMs": 19415.155582999985,
+      "physicalGrowthBytes": 7688466432,
+      "growthAfterEditsBytes": 0,
+      "reclaimedBytes": 7688380416,
+      "retainedOverheadBytes": 86016
+    }
+  ]
+}

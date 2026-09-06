@@ -1,8 +1,11 @@
 # Managed session validation
 
 Validated locally on 2026-09-06, with native Windows checks in GitHub Actions.
-The implementation is on the `codex/windows-sessions` review branch; these
-results do not represent a published CLI release.
+These checks validated the implementation shipped in
+[v0.4.0](https://github.com/treadiehq/boot/releases/tag/v0.4.0). The release workflow
+subsequently passed all five platform builds and its distribution tests.
+The [release benchmark report](session-benchmarks.md) contains a fresh storage
+run, comparative workspace measurements, and parallel PostgreSQL results.
 
 ## Preparation regressions
 
