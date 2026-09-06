@@ -34,10 +34,10 @@ disposable source repositories and synthetic values, never production secrets.
   `import.meta` warnings remain in mount/service/UI/update commands.
 - `pnpm demo:sessions`: both installed agents exited 0 using real APFS sessions.
 - `pnpm benchmark:sessions`: completed the isolated-volume measurements below.
-- Website `yarn dev`: `/sessions` compiled successfully after the runtime and
-  submodule copy updates, with a 200 response in dev-server output. Colored CLI
-  and YAML examples are preserved. Source is in `boot-website`. This follow-up
-  did not repeat a visual browser review.
+- Website `yarn build`: passed, including the generated `/sessions` route, after
+  the Windows, runtime, and submodule copy updates. Colored CLI and YAML examples
+  are preserved. Source is in `boot-website`. This follow-up did not repeat a
+  visual browser review.
 
 Session tests verify independent edits, staging, commits, and included dependency
 writes; Boot-owned shared Git storage with separate indexes; linked-worktree

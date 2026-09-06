@@ -56,7 +56,7 @@ describe("opt-in session runtime", () => {
     await gcSessions({ store: a.store, apply: true });
     expect(JSON.parse(await fs.readFile(path.join(fixture.home, "session-runtime-ports.json"), "utf8")).leases.map((item: { session: string }) => item.session)).toEqual([b.id]);
     expect((await inspectSession(b.id, b.store)).runtime!.ports).toHaveLength(2);
-  }, 20_000);
+  }, process.platform === "win32" ? 60_000 : 20_000);
   it("refuses occupied ports and repairs an interrupted lease publication", async () => {
     await defineRuntime();
     const a = await createSession(fixture.source, { store: fixture.store, storage: "clone", runtime: true });
