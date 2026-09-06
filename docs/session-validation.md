@@ -25,7 +25,7 @@ disposable source repositories and synthetic values, never production secrets.
 
 - `pnpm test:sessions`: 39 passed, 1 Linux-only skip on macOS/APFS.
 - `pnpm test:run`: 73 files passed; 524 tests passed. PostgreSQL tests are opt-in;
-  the Linux-only tmpfs case and eight native Windows tests are skipped on macOS.
+  the Linux-only tmpfs case and nine native Windows tests are skipped on macOS.
 - `pnpm test:sessions:runtime`: 4 passed against real local Docker/PostgreSQL 16/17.
 - `pnpm test:sessions:linux`: 38 passed on real Btrfs and 38 passed on real XFS,
   with the unsupported tmpfs case exercised in both runs.
@@ -127,24 +127,26 @@ performance benchmark. The remaining allocation is directory/metadata overhead;
 session contents and unused seeds were reclaimed. The disposable image was
 unmounted and removed afterward.
 
-## Windows implementation follow-up
+## Windows validation
 
-The ReFS helper compiles under Mono in the declared Linux test workflow, and
-TypeScript checking passes. This is a compilation check, not Windows validation.
-Native execution remains pending on Windows 2022/2025 runners. The new workflow
-builds the standalone Windows binary and runs eight native tests plus one shim
-parser test against NTFS, ReFS 4K, and ReFS 64K on disposable VHDs. It covers
+Native execution tests passed on Windows Server 2022 and 2025 x64 against NTFS,
+ReFS 4K, and ReFS 64K on disposable VHDs. Nine native tests plus one shim-parser
+test passed for each filesystem on each Windows version. The coverage includes
 strict CoW and partial clusters, independent files/indexes, exact argv/cwd/exit,
-descendant protection, cancellation during journaling, supervisor death, junctions,
-named streams, ownership SID checks, and standalone binary launches.
+long checkout paths, descendant protection, cancellation during journaling,
+supervisor death before and after launch, junctions, named streams, ownership SID
+checks, and standalone binary launches.
 
-The macOS session regression suite and real Btrfs/XFS suite are rerun for this
-change. The Windows validation warning must remain until the native runs pass.
+The Windows workflow also runs the existing recursive-submodule and runtime-port
+regressions. Release builds run the suite against the actual Windows artifact
+before publication. The helper additionally compiles under Mono in the Linux
+workflow. Linux CI passed 521 tests, with platform-specific and opt-in cases
+skipped; the macOS/APFS, Btrfs/XFS, and PostgreSQL jobs also passed.
 
 ## Limits
 
-Windows ReFS cloning and Job Object execution are implemented but native Windows
-validation is pending. NTFS cannot provide the ReFS block-cloning primitive.
+Desktop Windows 10/11 and Windows ARM have not been directly tested. NTFS cannot
+provide the ReFS block-cloning primitive. Managed PostgreSQL requires macOS/Linux.
 Nested selected repositories, remote providers, and whole-volume snapshots are
 unsupported. Submodules must be initialized locally; dirty topology changes
 must be committed before capture. Source/npm APFS runs need Apple command line tools;
@@ -161,6 +163,5 @@ its group needs an external ownership claim. New commits remain conservatively
 protected even after an external push/merge; discarding them requires a verified,
 exact-session override. Unknown/corrupt ownership state requires manual review.
 
-No implementation blocker remains in the validated macOS/Linux scope. Windows
-validation, arbitrary service orchestration, and OS sandboxing are outside this
-release's guarantees.
+Arbitrary service orchestration and OS sandboxing remain outside this release's
+guarantees.

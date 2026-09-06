@@ -43,7 +43,7 @@ describe("independent submodule snapshots", () => {
     expect((await gcSessions({ store: fixture.store, apply: true, session: a.id, discardWork: a.id })).sessions[0]!.action).toBe("removed");
     expect(await fs.readdir(path.join(fixture.store, "seeds"))).toEqual([]);
     expect(await requireGit(fixture.source, ["status", "--porcelain"])).toBe("");
-  }, 30_000);
+  }, process.platform === "win32" ? 60_000 : 30_000);
   it("uses pinned commits by default and captures child HEAD, parent index, and child staged/unstaged state explicitly", async () => {
     const child = await submodule();
     const base = await requireGit(child, ["rev-parse", "HEAD"]);

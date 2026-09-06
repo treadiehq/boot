@@ -270,13 +270,11 @@ Do not downgrade while such sessions exist. Existing bootstrap commands,
 maps, context files, and their versions are unchanged.
 
 Nested/overlapping selected repositories, remote workspace providers,
-and whole-volume snapshots are not supported by this session release. Windows
-native CoW and Job Object execution are implemented, with native Windows
-validation pending as described below. macOS/Linux checks remain passing.
+and whole-volume snapshots are not supported by this session release.
 
 ## Windows sessions
 
-The Windows implementation targets Windows x64 with the built-in .NET Framework
+The Windows implementation targets Windows 10/Server 2016 or newer on x64, with the built-in .NET Framework
 4.8 compiler. Boot compiles its small helper once into a private cache; neither
 Visual Studio nor a third-party filesystem driver is needed. It checks the
 current user's SID and directory ACLs before accessing a store. Windows records
@@ -304,11 +302,12 @@ shell. Other batch wrappers need an explicit executable or `node <entrypoint>`.
 Job Objects are not a security boundary against processes launched through an
 unrelated broker or service.
 
-**Native Windows validation is pending.** The helper cross-compiles successfully,
-but that does not establish Windows filesystem or process behavior. The prepared
-Windows 2022/2025 CI suite exercises NTFS fallback, ReFS with 4 KiB and 64 KiB
-clusters, process trees, interrupted launchers, arguments, and standalone builds.
-The existing managed PostgreSQL runtime still requires macOS/Linux Docker.
+Native execution is validated on Windows Server 2022 and 2025 x64: NTFS fallback,
+ReFS with 4 KiB and 64 KiB clusters, independent files and indexes, long paths,
+process trees, interrupted launchers, argument handling, and standalone builds.
+The Windows suite also covers recursive submodules and app-port assignments.
+Desktop Windows 10/11 and Windows ARM have not been directly tested. Managed
+PostgreSQL still requires macOS/Linux Docker.
 
 ## Reproducing validation
 
