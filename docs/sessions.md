@@ -147,7 +147,9 @@ and Windows. Start Docker before creating a runtime session. On Windows, use
 Docker Desktop in **Linux containers** mode with its local named pipe (for
 example, `npipe:////./pipe/dockerDesktopLinuxEngine`). macOS/Linux use a local
 Unix socket. TCP and remote Docker endpoints are unsupported. An explicit
-`DOCKER_CONTEXT` takes precedence over `DOCKER_HOST`. Boot may pull the selected
+`DOCKER_CONTEXT` takes precedence over `DOCKER_HOST` in Boot: every Docker call
+passes `--context` explicitly so CLI-version differences cannot select a different
+engine after preflight. Boot may pull the selected
 image, and refuses a Windows-container engine before creating database resources.
 
 Docker's [Windows setup guide](https://docs.docker.com/desktop/setup/install/windows-install/)

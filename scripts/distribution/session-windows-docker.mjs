@@ -45,7 +45,7 @@ try {
   const env = { ...process.env, DOCKER_CONTEXT: name, DOCKER_HOST: "tcp://127.0.0.1:1" };
   // No resources/passwords exist yet: expose only transport errors and the
   // engine OS here, so a broken fixture cannot mask the integration results.
-  if (await run("docker", ["info", "--format", "Engine through Windows pipe: {{.OSType}}"], env) !== 0) throw new Error("The Windows named-pipe fixture could not reach its Linux engine.");
+  if (await run("docker", ["--context", name, "info", "--format", "Engine through Windows pipe: {{.OSType}}"], env) !== 0) throw new Error("The Windows named-pipe fixture could not reach its Linux engine.");
   process.exitCode = await run(process.execPath, ["scripts/distribution/session-runtime.mjs"], env);
 } finally {
   if (contextCreated && await run("docker", ["context", "rm", "--force", name]) !== 0) process.exitCode = 1;

@@ -15,6 +15,8 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   await fs.rm(root, { recursive: true, force: true });
 });
 
@@ -54,6 +56,40 @@ function runWorker(workerPath: string, args: string[]): Promise<void> {
 }
 
 describe("withFileLock", () => {
+  it("retries transient Windows guard access errors without entering an owned lock", async () => {
+    vi.stubGlobal("process", { ...process, platform: "win32" });
+    await writeOldLock(process.pid);
+    const original = fs.mkdir;
+    let denied = false;
+    vi.spyOn(fs, "mkdir").mockImplementation(async (...args: Parameters<typeof fs.mkdir>) => {
+      if (args[0] === `${lockPath}.guard` && !denied) {
+        denied = true;
+        throw Object.assign(new Error("pending guard deletion"), { code: "EPERM" });
+      }
+      return original(...args);
+    });
+    const operation = vi.fn(async () => undefined);
+    await expect(withFileLock(lockPath, "test operation", operation, { timeoutMs: 350, staleAfterMs: 10 })).rejects.toThrow("Timed out waiting for another Boot process");
+    expect(denied).toBe(true);
+    expect(operation).not.toHaveBeenCalled();
+    expect(await fs.readFile(lockPath, "utf8")).toBe(`${process.pid}\n`);
+    await fs.rm(lockPath);
+    await expect(withFileLock(lockPath, "test operation", async () => "done")).resolves.toBe("done");
+  });
+
+  it("bounds Windows guard retries and preserves a permanent access error", async () => {
+    vi.stubGlobal("process", { ...process, platform: "win32" });
+    const original = fs.mkdir;
+    const denied = Object.assign(new Error("guard access denied"), { code: "EPERM" });
+    vi.spyOn(fs, "mkdir").mockImplementation(async (...args: Parameters<typeof fs.mkdir>) => {
+      if (args[0] === `${lockPath}.guard`) throw denied;
+      return original(...args);
+    });
+    const operation = vi.fn(async () => undefined);
+    await expect(withFileLock(lockPath, "test operation", operation, { timeoutMs: 150 })).rejects.toBe(denied);
+    expect(operation).not.toHaveBeenCalled();
+  });
+
   it("does not reclaim an old lock while its owner is alive", async () => {
     await writeOldLock(process.pid);
     const operation = vi.fn(async () => undefined);

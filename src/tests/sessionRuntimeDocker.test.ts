@@ -12,6 +12,9 @@ import { requireGit } from "../core/sessionStorage";
 
 // Opt-in: creates only UUID-named test resources, with exact cleanup below.
 const integration = process.env.BOOT_TEST_DOCKER === "1" ? describe : describe.skip;
+// Keep direct verification commands on the fixture context even when testing
+// Boot with a deliberately conflicting inherited DOCKER_HOST.
+const dockerArgs = (args: string[]) => process.env.DOCKER_CONTEXT ? ["--context", process.env.DOCKER_CONTEXT, ...args] : args;
 integration("real local PostgreSQL runtimes", () => {
   let fixture: Awaited<ReturnType<typeof sessionFixture>>;
   beforeEach(async () => {
@@ -44,7 +47,8 @@ integration("real local PostgreSQL runtimes", () => {
     const args = process.platform === "win32"
       ? ["-h", connection.hostname, "-p", connection.port]
       : ["container", "exec", "--env", "PGPASSWORD", record.runtime!.databases[0]!.container, "psql", "-h", "127.0.0.1"];
-    const result = await execa(command, [...args, "-X", "--no-password", "-U", "boot", "-d", "boot", "-v", "ON_ERROR_STOP=1", "-Atc", statement], {
+    const sqlArgs = [...args, "-X", "--no-password", "-U", "boot", "-d", "boot", "-v", "ON_ERROR_STOP=1", "-Atc", statement];
+    const result = await execa(command, process.platform === "win32" ? sqlArgs : dockerArgs(sqlArgs), {
       env: { PGPASSWORD: connection.password, PGCONNECT_TIMEOUT: "10", PGSSLMODE: "disable" }, reject: false, timeout: 30_000,
     }).catch(() => { throw new Error("Test SQL client could not run."); });
     // Do not print subprocess configuration or connection credentials on error.
@@ -79,8 +83,8 @@ integration("real local PostgreSQL runtimes", () => {
     await releaseSession(a.id, { store: a.store });
     const removed = a.runtime!.databases[0]!;
     await gcSessions({ store: a.store, apply: true, session: a.id });
-    expect((await execa("docker", ["container", "inspect", "--format", "{{.Id}}", removed.container], { reject: false })).exitCode).not.toBe(0);
-    expect((await execa("docker", ["volume", "inspect", "--format", "{{.Name}}", removed.volume], { reject: false })).exitCode).not.toBe(0);
+    expect((await execa("docker", dockerArgs(["container", "inspect", "--format", "{{.Id}}", removed.container]), { reject: false })).exitCode).not.toBe(0);
+    expect((await execa("docker", dockerArgs(["volume", "inspect", "--format", "{{.Name}}", removed.volume]), { reject: false })).exitCode).not.toBe(0);
     expect(await sql(await store.findSession(b.id, b.store), "SELECT value FROM session_test;")).toBe("agent-b");
   }, 240_000);
   it("supports an explicitly selected PostgreSQL 16 database", async () => {
@@ -109,12 +113,12 @@ integration("real local PostgreSQL runtimes", () => {
     expect((await gcSessions({ store: a.store, apply: true, session: a.id, discardWork: a.id })).sessions[0]!.action).toBe("retained");
     saved.runtime!.daemon = daemon; await store.writeSession(saved);
     const db = saved.runtime!.databases[0]!;
-    await execa("docker", ["container", "rm", db.containerId!]);
-    const foreign = (await execa("docker", ["container", "create", "--name", db.container, "postgres:17-alpine"])).stdout.trim();
+    await execa("docker", dockerArgs(["container", "rm", db.containerId!]));
+    const foreign = (await execa("docker", dockerArgs(["container", "create", "--name", db.container, "postgres:17-alpine"]))).stdout.trim();
     try {
       expect((await gcSessions({ store: a.store, apply: true, session: a.id, discardWork: a.id })).sessions[0]!.action).toBe("retained");
-      expect((await execa("docker", ["container", "inspect", "--format", "{{.Id}}", foreign])).stdout).toBe(foreign);
-    } finally { await execa("docker", ["container", "rm", "--volumes", foreign]); }
+      expect((await execa("docker", dockerArgs(["container", "inspect", "--format", "{{.Id}}", foreign]))).stdout).toBe(foreign);
+    } finally { await execa("docker", dockerArgs(["container", "rm", "--volumes", foreign])); }
   }, 120_000);
   it("recovers a container created before its ID could be journaled", async () => {
     const original = store.writeSession;
@@ -129,6 +133,6 @@ integration("real local PostgreSQL runtimes", () => {
     expect(record.state).toBe("failed");
     expect(record.runtime!.databases[0]!.containerId).toBeNull();
     expect((await gcSessions({ store: record.store, apply: true, session: record.id, discardWork: record.id })).sessions[0]!.action).toBe("removed");
-    expect((await execa("docker", ["container", "ls", "--all", "--filter", `label=co.boot.session=${record.id}`, "--format", "{{.ID}}"])).stdout).toBe("");
+    expect((await execa("docker", dockerArgs(["container", "ls", "--all", "--filter", `label=co.boot.session=${record.id}`, "--format", "{{.ID}}"]))).stdout).toBe("");
   }, 120_000);
 });

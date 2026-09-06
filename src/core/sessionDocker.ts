@@ -16,7 +16,11 @@ export function validateLocalDockerEndpoint(endpoint: string, platform = process
 /** Docker output is consumed privately; raw errors/config/environment never
  * enter diagnostics. Arguments never contain database passwords. */
 export async function docker(args: string[], env?: Record<string, string>, timeout = 30_000) {
-  try { return await execa("docker", args, { env, reject: false, timeout }); }
+  // Pin an explicitly selected context: Docker CLI versions disagree about
+  // DOCKER_CONTEXT vs DOCKER_HOST precedence. Inspection and mutation must use
+  // the same engine regardless of the inherited host setting.
+  const context = process.env.DOCKER_CONTEXT;
+  try { return await execa("docker", context ? ["--context", context, ...args] : args, { env, reject: false, timeout }); }
   catch { throw new Error("Docker could not complete a session runtime operation. Check the local Docker daemon and retry."); }
 }
 
@@ -27,7 +31,7 @@ export async function mustDocker(args: string[], env?: Record<string, string>, t
 }
 
 export async function daemonIdentity(): Promise<string> {
-  // Docker's explicit context takes precedence over DOCKER_HOST. Pass its name
+  // The wrapper pins an explicit context ahead of DOCKER_HOST. Pass its name
   // to context inspect as well, so validation examines the engine we will use.
   const context = process.env.DOCKER_CONTEXT;
   const endpoint = !context && process.env.DOCKER_HOST ? process.env.DOCKER_HOST

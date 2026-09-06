@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { execa } from "execa";
-import { daemonIdentity, validateLocalDockerEndpoint } from "../core/sessionDocker";
+import { daemonIdentity, docker, validateLocalDockerEndpoint } from "../core/sessionDocker";
 
 vi.mock("execa", () => ({ execa: vi.fn() }));
 const exec = vi.mocked(execa);
@@ -31,7 +31,10 @@ describe("Docker runtime preflight", () => {
     vi.stubEnv("DOCKER_CONTEXT", "desktop-linux"); vi.stubEnv("DOCKER_HOST", "tcp://remote.invalid:2375");
     reply(local); reply("linux|fixture-daemon\r\n"); reply("28.5.1");
     expect(await daemonIdentity()).toBe("fixture-daemon");
-    expect(exec).toHaveBeenNthCalledWith(1, "docker", ["context", "inspect", "desktop-linux", "--format", "{{.Endpoints.docker.Host}}"], expect.any(Object));
+    expect(exec).toHaveBeenNthCalledWith(1, "docker", ["--context", "desktop-linux", "context", "inspect", "desktop-linux", "--format", "{{.Endpoints.docker.Host}}"], expect.any(Object));
+    reply("");
+    await docker(["volume", "ls"]);
+    for (const call of exec.mock.calls) expect(call[1]).toMatchObject({ 0: "--context", 1: "desktop-linux" });
   });
   it("uses an explicit local host when no context override is selected", async () => {
     vi.stubEnv("DOCKER_HOST", local); reply("linux|fixture-daemon"); reply("29.1.0");
