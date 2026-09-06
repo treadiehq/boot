@@ -88,7 +88,6 @@ describe("requirement inspection", () => {
       name: "db",
       required: undefined,
       state: "available",
-      observed: "accepting connections",
     });
     expect(execaCommandMock).toHaveBeenCalledWith(
       "pg_isready -p 5433",

@@ -71,6 +71,7 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           if echo "${{ matrix.target }}" | grep -q darwin; then
             export BUN_NO_CODESIGN_MACHO_BINARY=1
+            node scripts/embed-session-native.mjs
           fi
           bun build src/index.ts \
             --compile \

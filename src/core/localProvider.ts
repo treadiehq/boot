@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { execaCommand } from "execa";
+import { execa, execaCommand } from "execa";
 import {
   materializeSelected,
   storedEnvironmentNames,
@@ -80,7 +80,20 @@ async function inspectRepository(
           `but boot.yaml expects ${quoteUserValue(sanitizeRemoteUrl(repository.url), 500)}`,
       };
     }
-    if (repository.ref && currentRef !== repository.ref) {
+    // Branches retain branch identity. Tags and object IDs are satisfied by a
+    // detached HEAD at the resolved commit, including annotated tags.
+    let refMatches = !repository.ref || currentRef === repository.ref;
+    if (!refMatches && repository.ref) {
+      const branch = await execa("git", ["-C", repositoryPath, "show-ref", "--verify", "--quiet", `refs/heads/${repository.ref}`], { reject: false });
+      if (branch.exitCode !== 0) {
+        const [head, requested] = await Promise.all([
+          execa("git", ["-C", repositoryPath, "rev-parse", "--verify", "HEAD^{commit}"], { reject: false }),
+          execa("git", ["-C", repositoryPath, "rev-parse", "--verify", "--end-of-options", `${repository.ref}^{commit}`], { reject: false }),
+        ]);
+        refMatches = head.exitCode === 0 && requested.exitCode === 0 && head.stdout === requested.stdout;
+      }
+    }
+    if (!refMatches) {
       return {
         id: repository.id,
         path: repository.path,
@@ -242,7 +255,7 @@ async function updatePlaceholder(
 export class LocalWorkspaceProvider implements WorkspaceProvider {
   readonly name = "local";
 
-  async inspect(root: string, workspace: ResolvedWorkspace): Promise<RealizationPlan> {
+  async inspect(root: string, workspace: ResolvedWorkspace, options: { probe?: boolean } = {}): Promise<RealizationPlan> {
     const absoluteRoot = path.resolve(root);
     const [repositories, tools, services, bootNames] = await Promise.all([
       Promise.all(
@@ -250,8 +263,12 @@ export class LocalWorkspaceProvider implements WorkspaceProvider {
           inspectRepository(absoluteRoot, repository),
         ),
       ),
-      inspectTools(workspace.tools),
-      inspectServices(workspace.services, { cwd: absoluteRoot }),
+      options.probe === false
+        ? Object.entries(workspace.tools).map(([name, required]) => ({ name, required, state: "unsupported" as const, detail: "not evaluated during dry-run" }))
+        : inspectTools(workspace.tools),
+      options.probe === false
+        ? Object.entries(workspace.services).map(([name, definition]) => ({ name, required: definition.version, state: "unsupported" as const, detail: "not evaluated during dry-run" }))
+        : inspectServices(workspace.services, { cwd: absoluteRoot }),
       bootEnvironmentNames(absoluteRoot),
     ]);
     const environment = inspectProcessEnvironment(workspace.env, bootNames);
@@ -276,8 +293,8 @@ export class LocalWorkspaceProvider implements WorkspaceProvider {
     };
   }
 
-  async plan(root: string, workspace: ResolvedWorkspace): Promise<RealizationPlan> {
-    return this.inspect(root, workspace);
+  async plan(root: string, workspace: ResolvedWorkspace, options: { probe?: boolean } = {}): Promise<RealizationPlan> {
+    return this.inspect(root, workspace, options);
   }
 
   async apply(
@@ -341,6 +358,12 @@ export class LocalWorkspaceProvider implements WorkspaceProvider {
       }
     }
 
+    // A failed prerequisite must not lead to environment writes, service
+    // startup, or setup in a conflicting/partially prepared workspace.
+    if (failures.length > 0) {
+      return { plan, applied, failures, ready: false };
+    }
+
     const bootEnvironment = plan.environment.filter(
       (requirement) => requirement.availableFrom === "boot",
     );
@@ -381,7 +404,7 @@ export class LocalWorkspaceProvider implements WorkspaceProvider {
 
     // Services come up after .env files exist (start commands may read them)
     // and before setup commands (which may need the services, e.g. migrations).
-    if (options.startServices) {
+    if (options.startServices && failures.length === 0) {
       const results = await startServices(absoluteRoot, workspace.services, {
         onEvent: options.onServiceEvent,
       });
@@ -398,7 +421,9 @@ export class LocalWorkspaceProvider implements WorkspaceProvider {
       }
     }
 
-    if (options.runSetup) {
+    const prerequisites = options.runSetup && failures.length === 0
+      ? await this.inspect(absoluteRoot, workspace) : null;
+    if (options.runSetup && failures.length === 0 && prerequisites?.ready) {
       const setupCommands = Object.values(workspace.commands).filter(
         (command) => command.id === "setup" || command.id.endsWith("-setup"),
       );
@@ -424,6 +449,7 @@ export class LocalWorkspaceProvider implements WorkspaceProvider {
             name: command.id,
             message: sanitizeUserText((error as Error).message),
           });
+          break;
         }
       }
     }

@@ -92,8 +92,10 @@ Tools map names to required versions. The local provider checks `node`,
 `pnpm`, `npm`, `yarn`, `bun`, `python`, `python3`, `go`, `rust`, and `git`.
 Unknown adapters are reported as unsupported.
 
-Version matching supports exact prefixes such as `"24"` plus common `>=`, `>`,
-`<=`, `<`, `^`, and `~` expressions.
+Version matching supports exact prefixes such as `"24"`, wildcards, common `>=`,
+`>`, `<=`, `<`, `^`, and `~` expressions, conjunctions such as `">=18 <20"`, and
+`||` alternatives. Unsupported syntax fails closed; this is not a full npm
+semver implementation.
 
 ## Services
 
@@ -106,7 +108,9 @@ Unknown types remain visible as unresolved requirements unless they declare a
 `check` is a shell command that exits 0 when the service is healthy. It runs
 from the workspace root and takes precedence over the built-in probe for the
 service's type, so it also covers non-default ports or custom services. Its
-output is not interpreted as a version.
+output is not interpreted as a version and is never included in stable
+diagnostics. Version probes expose only a parsed numeric version. Dry-run does
+not execute manifest probes.
 
 When a custom `check` is combined with `version`, add a `versionCheck` command
 that exits 0 and prints the running service version to stdout:
@@ -150,6 +154,11 @@ Each selection is either `all` or an explicit list of definition IDs; `env`
 selections use environment variable names. Omitted selections mean all
 available definitions. References to unknown definitions fail validation.
 
+`readOnly: true` declares review intent. It does not change filesystem
+permissions, restrict a child process, or isolate services. Agents must respect
+the intent; use an OS sandbox for enforced restrictions. Managed writable
+sessions require a writable profile.
+
 ## Constraints
 
 Constraints are human-readable instructions exposed through inspection. Boot
@@ -161,3 +170,27 @@ The same file can retain the older `ignore`, `doctor`, `daemon`, and
 `hydrate.strategy` configuration. These fields exist for compatibility with
 the synchronization commands. They control local scanning, cloning, and
 background sync; they are not part of the primary workspace flow.
+
+## Managed session runtime resources
+
+The optional top-level `runtime` mapping declares resources created only by
+`boot session create --runtime`. Profiles select IDs with `runtime: all` or a
+list. A port resource has `type: port` and an `env` variable; a PostgreSQL resource
+has `type: postgres`, `env`, and optional `version: "16"` or `"17"` (default).
+Environment names must be unique and cannot replace Boot identity variables or
+reserved process variables such as `PATH`. A PostgreSQL runtime replaces a
+selected PostgreSQL service with the same ID in the frozen session definition.
+
+```yaml
+runtime:
+  web: { type: port, env: PORT }
+  postgres: { type: postgres, version: "17", env: DATABASE_URL }
+profiles:
+  agent:
+    repositories: all
+    runtime: [web, postgres]
+```
+
+These optional fields extend schema version 1; older strict CLI versions reject
+them. See [managed sessions](sessions.md#optional-ports-and-postgresql) for Docker
+requirements, environment delivery, port leases, and disposable database cleanup.

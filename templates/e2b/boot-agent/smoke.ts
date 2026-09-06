@@ -1,4 +1,5 @@
 import { Sandbox } from "e2b";
+import { formatE2BError } from "./errors";
 
 function requiredEnvironment(name: string): string {
   const value = process.env[name]?.trim();
@@ -32,7 +33,7 @@ async function main(): Promise<void> {
 }
 
 main().catch((error: unknown) => {
-  const message = error instanceof Error ? error.message : String(error);
+  const message = formatE2BError(error);
   process.stderr.write(`E2B smoke check failed: ${message}\n`);
   process.exitCode = 1;
 });

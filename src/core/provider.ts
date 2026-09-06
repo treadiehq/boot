@@ -72,7 +72,7 @@ export interface RealizationResult {
 export interface WorkspaceProvider {
   readonly name: string;
   inspect(root: string, workspace: ResolvedWorkspace): Promise<RealizationPlan>;
-  plan(root: string, workspace: ResolvedWorkspace): Promise<RealizationPlan>;
+  plan(root: string, workspace: ResolvedWorkspace, options?: { probe?: boolean }): Promise<RealizationPlan>;
   apply(
     root: string,
     workspace: ResolvedWorkspace,

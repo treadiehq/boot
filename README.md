@@ -46,6 +46,28 @@ including secret values.
 `boot ui` opens a local web app served by the CLI itself (127.0.0.1 only) that 
 lists your workspaces and prepares and launches them with one click.
 
+## Run several agents on one project
+
+Create a managed workspace for each task, then launch the agent inside it:
+
+```bash
+boot session create . --profile agent --name fix --storage auto
+boot session run fix -- codex
+boot session diff fix
+boot session release fix
+boot session gc
+```
+
+Sessions use real copy-on-write on APFS and supported Linux filesystems, with
+explicitly reported worktree/clone fallbacks. Each session has independent files
+and an index. Start from committed code, or explicitly include working changes
+and prepared dependencies with `--include-working-tree` and
+`--include node_modules`. Prepared includes require CoW.
+
+GC previews by default. `--apply` removes eligible released sessions while
+preserving active processes, changes, outstanding commits, and unverifiable work.
+See [managed sessions](docs/sessions.md) for storage, ownership, and cleanup rules.
+
 ## Start a fresh cloud agent
 
 Publish the reviewed workspace definition once:
@@ -88,15 +110,21 @@ secrets must have the workspace key provisioned before bootstrap.
 - Different setups for local work, coding agents, CI, and review
 - One-command, profile-scoped setup on fresh cloud machines
 - A local launchpad (`boot ui`) to prepare and launch workspaces in one click
+- Managed agent sessions with CoW storage, recursive submodules, and conservative cleanup
+- Opt-in session ports and disposable PostgreSQL databases (`--runtime`)
 
 Boot prepares repositories, checks requirements, and starts the services you
-declare. It does not replace Git, install tools, or supervise processes.
+declare. It tracks commands launched with `boot session run`; it does not replace
+Git or install tools. Session runtimes assign ports and create separate PostgreSQL
+databases; other external services remain shared.
 
 ## Learn more
 
 - [Getting started](docs/getting-started.md)
 - [`boot.yaml` reference](docs/boot-yaml.md)
 - [Agent workflows](docs/agents.md)
+- [Managed agent sessions](docs/sessions.md)
+- [Session validation and storage measurements](docs/session-validation.md)
 - [Agent bootstrap benchmark](docs/benchmarks.md)
 - [Sharing a workspace](docs/publishing.md)
 - [CLI reference](docs/reference.md)

@@ -25,8 +25,27 @@ boot up . --profile agent --provider local
 - optionally executes explicit setup commands;
 - reports structured results and blockers.
 
-The local provider does not install runtimes, start services, enforce read-only
-filesystem policy, or provision containers.
+The local provider starts declared services only with `--start`. It does not
+install runtimes, enforce read-only filesystem policy, or provision containers.
+`readOnly` is intent for the agent; an OS sandbox or separate execution environment
+must enforce access restrictions.
+
+Preparation stops dependent environment, service, and setup actions after
+repository failures. Setup also requires verified prerequisites. Dry-run skips
+registration, mutations, and manifest probes; its requirement status may therefore
+be unevaluated. Stable diagnostics suppress arbitrary health-check output.
+
+## Managed session storage
+
+Sessions use the resolved local workspace/profile and record immutable repository
+bases. Storage is separate from the preparation provider: APFS clonefile, Linux
+reflink, Boot-owned Git worktrees, or ordinary clones. `auto` reports the actual
+backend and fallback reason; explicit `cow` never silently copies. Prepared
+includes must remain CoW and fail when their source cannot clone into the store.
+
+This creates independent editable files and indexes, with lifecycle/process
+tracking and conservative GC. It does not isolate runtime services or hostile
+same-user processes. See [managed sessions](sessions.md) for the complete contract.
 
 ## Provider contract
 

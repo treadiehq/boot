@@ -1,0 +1,46 @@
+name: Windows sessions
+
+on:
+  push:
+    branches: [main, codex/windows-sessions]
+    paths:
+      - src/**
+      - scripts/distribution/session-windows.ps1
+      - package.json
+      - pnpm-lock.yaml
+      - .github/workflows/windows-sessions.yml
+  pull_request:
+    paths:
+      - src/**
+      - scripts/distribution/session-windows.ps1
+      - package.json
+      - pnpm-lock.yaml
+      - .github/workflows/windows-sessions.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-sessions:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, windows-2025]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: oven-sh/setup-bun@v2
+      - run: pnpm install --frozen-lockfile
+      - name: Build Windows distribution for execution tests
+        shell: pwsh
+        run: |
+          bun build src/index.ts --compile --target=bun-windows-x64 --outfile="$env:RUNNER_TEMP/boot-session-test.exe" --external fuse-native
+          "BOOT_TEST_WINDOWS_BINARY=$env:RUNNER_TEMP/boot-session-test.exe" >> $env:GITHUB_ENV
+      - name: NTFS fallback, ReFS 4K/64K, Job Objects, and standalone execution
+        run: pnpm test:sessions:windows

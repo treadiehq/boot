@@ -109,7 +109,8 @@ export async function getCurrentBranch(dir: string): Promise<string | null> {
 }
 
 export async function isDirty(dir: string): Promise<boolean> {
-  const res = await git(["-C", dir, "status", "--porcelain"]);
+  // Inspection must not refresh/write the index or invoke a configured monitor.
+  const res = await git(["--no-optional-locks", "-c", "core.fsmonitor=false", "-C", dir, "status", "--porcelain"]);
   if (res.exitCode !== 0) return false;
   return res.stdout.trim().length > 0;
 }
