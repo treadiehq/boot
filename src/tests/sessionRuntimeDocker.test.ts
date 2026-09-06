@@ -38,7 +38,15 @@ integration("real local PostgreSQL runtimes", () => {
   async function sql(record: store.SessionRecord, statement: string) {
     const environment = await startRuntime(record);
     const connection = new URL(environment.DATABASE_URL!);
-    const result = await execa("docker", ["container", "exec", "--env", "PGPASSWORD", record.runtime!.databases[0]!.container, "psql", "-h", "127.0.0.1", "-U", "boot", "-d", "boot", "-v", "ON_ERROR_STOP=1", "-Atc", statement], { env: { PGPASSWORD: connection.password }, reject: false });
+    // Windows must authenticate from the host through its published localhost
+    // port. Executing psql only inside Docker would miss forwarding failures.
+    const command = process.platform === "win32" ? process.env.BOOT_TEST_PSQL ?? "psql" : "docker";
+    const args = process.platform === "win32"
+      ? ["-h", connection.hostname, "-p", connection.port]
+      : ["container", "exec", "--env", "PGPASSWORD", record.runtime!.databases[0]!.container, "psql", "-h", "127.0.0.1"];
+    const result = await execa(command, [...args, "-X", "--no-password", "-U", "boot", "-d", "boot", "-v", "ON_ERROR_STOP=1", "-Atc", statement], {
+      env: { PGPASSWORD: connection.password, PGCONNECT_TIMEOUT: "10", PGSSLMODE: "disable" }, reject: false, timeout: 30_000,
+    }).catch(() => { throw new Error("Test SQL client could not run."); });
     // Do not print subprocess configuration or connection credentials on error.
     if (result.exitCode !== 0) throw new Error("Test SQL failed.");
     return result.stdout;

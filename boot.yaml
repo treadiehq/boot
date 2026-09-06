@@ -41,6 +41,9 @@ commands:
   session-windows-test:
     run: pnpm test:sessions:windows
     repository: boot
+  session-windows-postgres-test:
+    run: pnpm test:sessions:windows:postgres
+    repository: boot
   session-linux-test:
     run: pnpm test:sessions:linux
     repository: boot

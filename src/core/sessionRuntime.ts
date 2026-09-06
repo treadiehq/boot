@@ -1,7 +1,6 @@
 import path from "node:path";
 import net from "node:net";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { execa } from "execa";
 import { z } from "zod";
 import { stateDir } from "./identity";
 import { withFileLock } from "./lock";
@@ -10,6 +9,7 @@ import { decrypt, encrypt, encryptedBlobSchema, loadKey, loadOrCreateKey } from 
 import { readJson, writeSession, type SessionRecord } from "./sessionStore";
 import { resolveWithinRoot } from "./pathUtils";
 import type { RuntimeDefinition } from "./workspace";
+import { docker, mustDocker, daemonIdentity } from "./sessionDocker";
 
 const leaseSchema = z.object({ schemaVersion: z.literal(1), leases: z.array(z.object({ session: z.string().uuid(), store: z.string(), token: z.string().uuid(), ports: z.array(z.number().int()) }).strict()) }).strict();
 const hash = (input: string) => createHash("sha256").update(input).digest("hex");
@@ -17,27 +17,6 @@ const leasesPath = () => path.join(stateDir(), "session-runtime-ports.json");
 const secretPath = (record: SessionRecord) => resolveWithinRoot(record.store, `sessions/${record.id}/runtime-secrets.json`);
 const labelsFor = (record: SessionRecord) => ({ "co.boot.session": record.id, "co.boot.store": hash(record.store), "co.boot.runtime": record.runtime!.token });
 
-/** Docker output is consumed privately; raw errors/config/environment never enter diagnostics. */
-async function docker(args: string[], env?: Record<string, string>, timeout = 30_000) {
-  try { return await execa("docker", args, { env, reject: false, timeout }); }
-  catch { throw new Error("Docker could not complete a session runtime operation. Check the local Docker daemon and retry."); }
-}
-async function mustDocker(args: string[], env?: Record<string, string>, timeout?: number) {
-  const result = await docker(args, env, timeout);
-  if (result.exitCode !== 0) throw new Error(`Docker session operation ${args.slice(0, 2).join(" ")} failed; owned resources remain journaled for recovery.`);
-  return result.stdout;
-}
-async function daemonIdentity(): Promise<string> {
-  if (process.platform === "win32") throw new Error("Managed PostgreSQL runtimes are supported on macOS/Linux with local Docker.");
-  const endpoint = process.env.DOCKER_HOST && !process.env.DOCKER_CONTEXT ? process.env.DOCKER_HOST
-    : (await mustDocker(["context", "inspect", "--format", "{{.Endpoints.docker.Host}}"])).trim();
-  if (!endpoint.startsWith("unix://")) throw new Error("Session runtimes require a local Docker Unix socket; remote Docker endpoints are unsupported.");
-  const version = (await mustDocker(["version", "--format", "{{.Server.Version}}"])).trim();
-  if (Number(version.split(".")[0]) < 28 || !/^\d+\./.test(version)) throw new Error("Session runtimes require Docker Engine 28 or newer for loopback-only publishing.");
-  const id = (await mustDocker(["info", "--format", "{{.ID}}"])).trim();
-  if (!id) throw new Error("Docker daemon identity is unavailable.");
-  return id;
-}
 async function verifyDaemon(record: SessionRecord): Promise<void> {
   if (record.runtime?.databases.length && await daemonIdentity() !== record.runtime.daemon) throw new Error("The Docker daemon differs from this session's recorded owner. Select the original local daemon before recovery.");
 }
@@ -49,7 +28,7 @@ async function ownedResource(record: SessionRecord, kind: "container" | "volume"
   if (result.exitCode !== 0) {
     // A failed inspection alone does not establish absence (daemon outages
     // must never authorize deletion). Confirm via the daemon's resource list.
-    const found = (await mustDocker([kind, "ls", ...(kind === "container" ? ["--all"] : []), "--format", kind === "container" ? "{{.Names}}" : "{{.Name}}"])).split("\n");
+    const found = (await mustDocker([kind, "ls", ...(kind === "container" ? ["--all"] : []), "--format", kind === "container" ? "{{.Names}}" : "{{.Name}}"])).split(/\r?\n/);
     if (found.includes(name)) throw new Error(`Owned ${kind} ${name} cannot be inspected.`);
     return null;
   }
