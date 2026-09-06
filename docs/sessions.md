@@ -142,8 +142,18 @@ boot session run fix -- boot up --run-setup
 `--runtime` is required; ordinary sessions allocate no resources. Profile
 selection accepts `all` or resource ID lists, like other Boot selections. Ports
 alone need no Docker. PostgreSQL supports versions `16` and `17` (default `17`)
-using the official Alpine image, with local Docker Engine 28+ on macOS/Linux.
-The Docker context must use a local Unix socket. Boot may pull the selected image.
+using the official Alpine image, with local Docker Engine 28+ on macOS, Linux,
+and Windows. Start Docker before creating a runtime session. On Windows, use
+Docker Desktop in **Linux containers** mode with its local named pipe (for
+example, `npipe:////./pipe/dockerDesktopLinuxEngine`). macOS/Linux use a local
+Unix socket. TCP and remote Docker endpoints are unsupported. An explicit
+`DOCKER_CONTEXT` takes precedence over `DOCKER_HOST`. Boot may pull the selected
+image, and refuses a Windows-container engine before creating database resources.
+
+Docker's [Windows setup guide](https://docs.docker.com/desktop/setup/install/windows-install/)
+covers Docker Desktop and WSL2 requirements; its
+[connection reference](https://docs.docker.com/desktop/troubleshoot-and-support/faqs/general/#how-do-i-connect-to-the-remote-docker-engine-api)
+describes the local named-pipe transport.
 
 Each session gets its own Docker network, with separate containers and named
 data volumes for its databases. Databases start empty. Boot publishes it only on `127.0.0.1` and generates a random password.
@@ -307,7 +317,8 @@ ReFS with 4 KiB and 64 KiB clusters, independent files and indexes, long paths,
 process trees, interrupted launchers, argument handling, and standalone builds.
 The Windows suite also covers recursive submodules and app-port assignments.
 Desktop Windows 10/11 and Windows ARM have not been directly tested. Managed
-PostgreSQL still requires macOS/Linux Docker.
+PostgreSQL on Windows uses a local named pipe connected to a Linux Docker engine;
+the Windows PostgreSQL CI fixture runs real containers in an owned WSL2 instance.
 
 ## Reproducing validation
 
@@ -321,7 +332,16 @@ dedicated Linux suite sets `BOOT_TEST_REQUIRE_COW=1` and must succeed on real Co
 mounting requires a privileged test container and the source is bound read-only.
 It also verifies real unsupported tmpfs behavior. `pnpm test:sessions:runtime`
 runs opt-in tests against local Docker: two independent PostgreSQL databases,
-authenticated SQL, launch variables, persistence, ownership refusal, and cleanup. `pnpm demo:sessions` runs the
+authenticated SQL, launch variables, persistence, ownership refusal, and cleanup.
+It works in PowerShell and POSIX shells. On Windows, install the native `psql`
+client on PATH or set `BOOT_TEST_PSQL` to its executable path; tests authenticate
+from Windows through the published localhost port. The CI-only
+`pnpm test:sessions:windows:postgres` command provisions an owned Ubuntu WSL2
+instance, verifies the official rootfs checksum, installs Docker Engine, and
+bridges an isolated local named pipe to its Unix socket. It leaves the Windows
+Docker service and selected context unchanged, and unregisters only its own
+randomly named WSL instance afterward.
+`pnpm demo:sessions` runs the
 installed Codex and Claude CLIs on disposable source, using their existing auth.
 
 `pnpm benchmark:sessions` prepares the repository's actual installed dependencies

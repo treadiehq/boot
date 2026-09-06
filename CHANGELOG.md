@@ -20,7 +20,8 @@
 ### Session runtime and Windows execution
 
 - Add opt-in port assignments and disposable PostgreSQL 16/17 databases using
-  local Docker Engine 28+ on macOS/Linux. Inject connection settings at launch,
+  local Linux Docker Engine 28+ on macOS, Linux, and Windows. Windows connects
+  through a local Docker named pipe and refuses Windows-container mode. Inject connection settings at launch,
   preserve database data on release, and remove owned volumes during session GC.
 - Launch Windows agents inside Job Objects with exact argument handling,
   descendant tracking, cancellation, and cleanup when the supervisor exits.

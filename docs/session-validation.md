@@ -1,8 +1,8 @@
 # Managed session validation
 
-Validated locally on 2026-09-06. The feature, fixtures, measurement scripts, and
-documentation are in the working changes; these results do not represent a
-published release or a deployed website.
+Validated locally on 2026-09-06, with native Windows checks in GitHub Actions.
+The implementation is on the `codex/windows-sessions` review branch; these
+results do not represent a published CLI release.
 
 ## Preparation regressions
 
@@ -24,9 +24,10 @@ The final command outcomes are below. Tests use
 disposable source repositories and synthetic values, never production secrets.
 
 - `pnpm test:sessions`: 39 passed, 1 Linux-only skip on macOS/APFS.
-- `pnpm test:run`: 73 files passed; 524 tests passed. PostgreSQL tests are opt-in;
+- `pnpm test:run`: 74 files passed; 546 tests passed. PostgreSQL tests are opt-in;
   the Linux-only tmpfs case and nine native Windows tests are skipped on macOS.
-- `pnpm test:sessions:runtime`: 4 passed against real local Docker/PostgreSQL 16/17.
+- `pnpm test:sessions:runtime`: 22 Docker transport/preflight checks and 4 tests
+  against real local Docker/PostgreSQL 16/17 passed on macOS.
 - `pnpm test:sessions:linux`: 38 passed on real Btrfs and 38 passed on real XFS,
   with the unsupported tmpfs case exercised in both runs.
 - `pnpm lint`: passed TypeScript checking.
@@ -146,7 +147,8 @@ skipped; the macOS/APFS, Btrfs/XFS, and PostgreSQL jobs also passed.
 ## Limits
 
 Desktop Windows 10/11 and Windows ARM have not been directly tested. NTFS cannot
-provide the ReFS block-cloning primitive. Managed PostgreSQL requires macOS/Linux.
+provide the ReFS block-cloning primitive. Windows PostgreSQL uses a local named
+pipe and Linux containers. Its native WSL2 CI validation is pending in this update.
 Nested selected repositories, remote providers, and whole-volume snapshots are
 unsupported. Submodules must be initialized locally; dirty topology changes
 must be committed before capture. Source/npm APFS runs need Apple command line tools;

@@ -1,4 +1,5 @@
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 if ($env:OS -ne 'Windows_NT' -or $env:GITHUB_ACTIONS -ne 'true') { throw 'This suite provisions an isolated WSL2 fixture on a Windows CI runner only. Use pnpm test:sessions:runtime with your existing local Docker elsewhere.' }
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $id = [Guid]::NewGuid().ToString('N')
@@ -50,7 +51,13 @@ docker version --format 'Engine version: {{.Server.Version}}'
 docker pull postgres:16-alpine
 docker pull postgres:17-alpine
 '@
-  ($setup -replace "`r", '') | & wsl.exe --distribution $distro --user root --exec bash -s
+  # Preserve LF bytes; PowerShell's native stdin pipeline appends CRLF, which
+  # can turn the last shell argument into an invalid image name.
+  $setupFile = Join-Path $fixture 'setup-docker.sh'
+  [IO.File]::WriteAllText($setupFile, ($setup -replace "`r", '') + "`n", [Text.UTF8Encoding]::new($false))
+  $linuxSetup = (& wsl.exe --distribution $distro --user root --exec wslpath -a -u $setupFile).Trim()
+  if ($LASTEXITCODE -ne 0) { throw 'Could not resolve the test setup script inside WSL2.' }
+  & wsl.exe --distribution $distro --user root --exec bash $linuxSetup
   if ($LASTEXITCODE -ne 0) { throw 'The owned WSL2 Docker engine could not be prepared.' }
   Write-Host 'Testing native Windows Boot, a local named pipe, and real PostgreSQL 16/17 in WSL2'
   & node (Join-Path $repoRoot 'scripts/distribution/session-windows-docker.mjs') $distro

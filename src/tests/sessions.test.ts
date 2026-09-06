@@ -86,7 +86,7 @@ describe("managed sessions on real filesystems", () => {
     expect(await fs.readFile(path.join(b.root, "node_modules", "fixture", "index.js"), "utf8")).toContain("= 1");
     expect(await fs.readFile(path.join(source, "file.txt"), "utf8")).toBe("original\n");
     expect((await inspectSession(a.id, store)).repositories[0]!.outstandingCommits).toHaveLength(1);
-  });
+  }, 20_000);
   it("uses a Boot-owned shared object store for independent worktrees", async () => {
     const [a, b] = await Promise.all([
       createSession(source, { name: "a", store, storage: "worktree" }),

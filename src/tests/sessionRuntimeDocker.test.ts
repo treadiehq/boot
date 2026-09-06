@@ -92,6 +92,16 @@ integration("real local PostgreSQL runtimes", () => {
     const record = await create("postgres-16");
     expect((await sql(record, "SELECT current_setting('server_version_num');")).startsWith("16")).toBe(true);
   }, 180_000);
+  it.skipIf(process.platform !== "win32" || !process.env.BOOT_TEST_WINDOWS_BINARY)("provisions and launches PostgreSQL through the standalone Windows binary", async () => {
+    const binary = process.env.BOOT_TEST_WINDOWS_BINARY!;
+    const created = await execa(binary, ["session", "create", fixture.source, "--name", "standalone", "--store", fixture.store, "--storage", "clone", "--runtime", "--json"], { reject: false, timeout: 120_000 });
+    if (created.exitCode !== 0) throw new Error("Standalone Windows runtime creation failed.");
+    const record = JSON.parse(created.stdout) as store.SessionRecord;
+    const script = `const {spawnSync}=require('node:child_process');const u=new URL(process.env.DATABASE_URL);const r=spawnSync(process.env.BOOT_TEST_PSQL,['-X','--no-password','-h',u.hostname,'-p',u.port,'-U','boot','-d','boot','-v','ON_ERROR_STOP=1','-Atc',"CREATE TABLE binary_test(value text); INSERT INTO binary_test VALUES ('windows-binary');"],{env:{...process.env,PGPASSWORD:u.password,PGCONNECT_TIMEOUT:'10',PGSSLMODE:'disable'},stdio:'ignore'});process.exit(r.status??1);`;
+    const launched = await execa(binary, ["session", "run", record.id, "--store", fixture.store, "--", process.execPath, "-e", script], { reject: false, timeout: 60_000 });
+    expect(launched.exitCode).toBe(0);
+    expect(await sql(await store.findSession(record.id, record.store), "SELECT value FROM binary_test;")).toBe("windows-binary");
+  }, 180_000);
   it("refuses a different daemon and foreign replacement even with exact-session discard", async () => {
     const a = await create("ownership"); await releaseSession(a.id, { store: a.store });
     const saved = await store.findSession(a.id, a.store), daemon = saved.runtime!.daemon;
