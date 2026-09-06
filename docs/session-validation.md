@@ -23,11 +23,14 @@ requires a writable profile.
 The final command outcomes are below. Tests use
 disposable source repositories and synthetic values, never production secrets.
 
-- `pnpm test:sessions`: 39 passed, 1 Linux-only skip on macOS/APFS.
-- `pnpm test:run`: 74 files passed; 546 tests passed. PostgreSQL tests are opt-in;
+- `pnpm test:sessions`: 61 passed, 1 Linux-only skip on macOS/APFS in CI.
+- `pnpm test:run`: 74 files passed; 548 tests passed. PostgreSQL tests are opt-in;
   the Linux-only tmpfs case and nine native Windows tests are skipped on macOS.
 - `pnpm test:sessions:runtime`: 22 Docker transport/preflight checks and 4 tests
   against real local Docker/PostgreSQL 16/17 passed on macOS.
+- `pnpm test:sessions:windows:postgres`: all 27 tests passed on Windows Server
+  2025 x64: 22 transport/preflight checks and 5 real PostgreSQL lifecycle tests,
+  including the compiled Windows executable.
 - `pnpm test:sessions:linux`: 38 passed on real Btrfs and 38 passed on real XFS,
   with the unsupported tmpfs case exercised in both runs.
 - `pnpm lint`: passed TypeScript checking.
@@ -36,9 +39,9 @@ disposable source repositories and synthetic values, never production secrets.
 - `pnpm demo:sessions`: both installed agents exited 0 using real APFS sessions.
 - `pnpm benchmark:sessions`: completed the isolated-volume measurements below.
 - Website `yarn build`: passed, including the generated `/sessions` route, after
-  the Windows, runtime, and submodule copy updates. Colored CLI and YAML examples
-  are preserved. Source is in `boot-website`. This follow-up did not repeat a
-  visual browser review.
+  the Windows, runtime, and submodule copy updates. The landing page keeps a short
+  introduction and colored CLI examples. Source is in `boot-website`. This
+  follow-up did not repeat a visual browser review.
 
 Session tests verify independent edits, staging, commits, and included dependency
 writes; Boot-owned shared Git storage with separate indexes; linked-worktree
@@ -59,7 +62,7 @@ verification of both arm64/x64 release helpers and execution of arm64 embedded
 bytes. The dedicated Linux test runs inside a disposable privileged Docker
 container with real Btrfs and XFS loop filesystems. It requires native CoW to
 succeed and separately proves tmpfs refusal without mocks. CI now includes both
-macOS/APFS and Linux filesystem jobs; CI itself has not been dispatched here.
+macOS/APFS and Linux filesystem jobs, which have passed on the review branch.
 
 The [live agent result](session-agent-demo-results.json) records Codex CLI
 0.153.3 and Claude Code 2.1.261. Both wrote the requested fixture files, reported
@@ -96,8 +99,9 @@ the implementation now uses a dedicated normal bridge with explicit localhost
 publishing. A teardown timeout was corrected, and the orphaned test resources
 were removed after verifying their exact ownership labels. The full-suite
 multi-repository fixture exceeded its former five-second limit under concurrent
-load; it now has a fifteen-second limit and passes. PostgreSQL CI coverage is
-configured but has not been dispatched here.
+load; it now has a fifteen-second limit and passes. The APFS fixture that creates
+two CoW sessions and tests independent indexes/commits has a twenty-second limit.
+Linux PostgreSQL CI has passed on the review branch.
 
 ## Physical storage benchmark
 
@@ -141,14 +145,32 @@ checks, and standalone binary launches.
 The Windows workflow also runs the existing recursive-submodule and runtime-port
 regressions. Release builds run the suite against the actual Windows artifact
 before publication. The helper additionally compiles under Mono in the Linux
-workflow. Linux CI passed 521 tests, with platform-specific and opt-in cases
+workflow. Linux CI passed 545 tests, with platform-specific and opt-in cases
 skipped; the macOS/APFS, Btrfs/XFS, and PostgreSQL jobs also passed.
+
+The [native Windows PostgreSQL run](https://github.com/treadiehq/boot/actions/runs/34054345269/job/101543354154)
+passed all 27 checks against commit `07536a49faf32e99af3379c0e6bc09c2e9cb1956`.
+Native Windows Node and the compiled Boot executable connected through a local
+named pipe to Docker Engine 29.8.0 in a disposable Ubuntu 24.04 WSL2 instance.
+Windows `psql.exe` authenticated through the published `127.0.0.1` ports to
+PostgreSQL 16 and 17. The suite verified independent data/ports, launch variables,
+release/restart persistence, exact ownership checks, interrupted provisioning
+recovery, and cleanup. The temporary Docker context and WSL distribution were
+removed successfully.
+
+These runs exposed a Docker CLI context-precedence difference and a transient
+Windows guard-directory access error. Boot now pins an explicit `DOCKER_CONTEXT`
+with `--context` on every Docker call, tested with a conflicting `DOCKER_HOST`.
+Guard acquisition retries Windows `EPERM` within its existing deadline without
+assuming ownership; regressions verify that live owners stay protected and
+permanent access failures remain bounded.
 
 ## Limits
 
 Desktop Windows 10/11 and Windows ARM have not been directly tested. NTFS cannot
 provide the ReFS block-cloning primitive. Windows PostgreSQL uses a local named
-pipe and Linux containers. Its native WSL2 CI validation is pending in this update.
+pipe and Linux containers. The CI fixture validates this transport and real
+database behavior, but does not install Docker Desktop on Windows Server.
 Nested selected repositories, remote providers, and whole-volume snapshots are
 unsupported. Submodules must be initialized locally; dirty topology changes
 must be committed before capture. Source/npm APFS runs need Apple command line tools;
