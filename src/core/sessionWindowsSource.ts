@@ -12,7 +12,6 @@ using System.Security.Principal;
 using Microsoft.Win32.SafeHandles;
 
 public static class BootWindows {
-  static void Trace(string message) { if (Environment.GetEnvironmentVariable("BOOT_WINDOWS_TEST_TRACE") == "1") Console.Error.WriteLine("Windows helper: " + message); }
   [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)] static extern SafeFileHandle CreateFileW(string name, uint access, uint share, IntPtr security, uint disposition, uint flags, IntPtr template);
   [DllImport("kernel32.dll", SetLastError=true)] static extern bool GetFileSizeEx(SafeFileHandle file, out long size);
   [DllImport("kernel32.dll", SetLastError=true)] static extern bool SetFilePointerEx(SafeFileHandle file, long distance, out long result, uint method);
@@ -172,7 +171,6 @@ public static class BootWindows {
         if (reader.ReadLine() != "start" || WaitForSingleObject(parent, 0) == 0) return 130;
         string[] command = new string[args.Length - 3]; Array.Copy(args, 3, command, 0, command.Length);
         child = Start(command, job);
-        Trace("agent created " + child.pid);
         try { Check(ResumeThread(child.thread) != 0xffffffff); }
         catch { TerminateProcess(child.process, 127); throw; }
         CloseHandle(child.thread); child.thread = IntPtr.Zero;
@@ -189,21 +187,20 @@ public static class BootWindows {
             TerminateJobObject(job, 130);
           } catch { TerminateJobObject(job, 130); }
         }); control.IsBackground = true; control.Start();
-        uint exit = 0; uint lastActive = UInt32.MaxValue; bool childExited = false;
+        uint exit = 0; bool childExited = false;
         while (true) {
           if (WaitForSingleObject(parent, 0) == 0) { TerminateJobObject(job, 130); return 130; }
           // ActiveProcesses is decremented only after an exited process loses
           // its outstanding references. Save the exit status, then close ours.
           if (!childExited && WaitForSingleObject(child.process, 0) == 0) {
             Check(GetExitCodeProcess(child.process, out exit));
-            CloseHandle(child.process); child.process = IntPtr.Zero; childExited = true; Trace("agent exited");
+            CloseHandle(child.process); child.process = IntPtr.Zero; childExited = true;
           }
           Accounting accounting; Check(QueryInformationJobObject(job, 1, out accounting, (uint)Marshal.SizeOf(typeof(Accounting)), IntPtr.Zero));
-          if (accounting.active != lastActive) { lastActive = accounting.active; Trace("active processes " + lastActive); }
           if (childExited && accounting.active == 0) break;
           Thread.Sleep(30);
         }
-        writer.WriteLine("done " + exit); Trace("completion sent"); acknowledged.WaitOne(5000); Trace("returning");
+        writer.WriteLine("done " + exit); acknowledged.WaitOne(5000);
         return unchecked((int)exit);
       }
     } finally {

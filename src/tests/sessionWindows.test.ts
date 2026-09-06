@@ -29,7 +29,7 @@ const windows = process.platform === "win32" ? describe : describe.skip;
 windows("Windows native sessions", () => {
   let fixture: Awaited<ReturnType<typeof sessionFixture>>;
   const cow = process.env.BOOT_TEST_WINDOWS_EXPECT_COW === "1";
-  beforeEach(async () => { fixture = await sessionFixture(); vi.stubEnv("BOOT_HOME", fixture.home); vi.stubEnv("BOOT_WINDOWS_TEST_TRACE", "1"); }, 30_000);
+  beforeEach(async () => { fixture = await sessionFixture(); vi.stubEnv("BOOT_HOME", fixture.home); }, 30_000);
   afterEach(async () => { vi.restoreAllMocks(); vi.unstubAllEnvs(); await fs.rm(fixture.root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); }, 30_000);
   const command = (args: string[]) => execa(process.execPath, ["--import", "tsx", path.resolve("src/index.ts"), ...args], { reject: false });
   it("probes actual ReFS cloning or refuses NTFS, including partial clusters, empty files and Unicode", async () => {
@@ -83,7 +83,7 @@ windows("Windows native sessions", () => {
     await fs.writeFile(entry, `require('fs').writeFileSync(${JSON.stringify(result)},JSON.stringify({argv:process.argv.slice(2),cwd:process.cwd(),id:process.env.BOOT_SESSION_ID}));process.exit(23)`);
     await fs.writeFile(shim, '@ECHO off\r\nSET "_prog=node"\r\n"%_prog%" "%dp0%\\agent.cjs" %*\r\n');
     const timer = setTimeout(() => process.emit("SIGTERM", "SIGTERM"), 15_000);
-    const exit = await runSession(a.id, [shim, ...args], { store: a.store, stdio: "inherit" }).finally(() => clearTimeout(timer));
+    const exit = await runSession(a.id, [shim, ...args], { store: a.store, stdio: "ignore" }).finally(() => clearTimeout(timer));
     expect(exit).toEqual({ code: 23, signal: null });
     const output = JSON.parse(await fs.readFile(result, "utf8"));
     expect(output).toEqual({ argv: args, cwd: a.root, id: a.id });
@@ -94,7 +94,7 @@ windows("Windows native sessions", () => {
     const marker = path.join(fixture.root, "descendant.json");
     const childCode = `require('fs').writeFileSync(${JSON.stringify(marker)},String(process.pid));setInterval(()=>{},1000)`;
     const parentCode = `const child=require('child_process').spawn(process.execPath,['-e',${JSON.stringify(childCode)}],{detached:true,stdio:'ignore'});child.unref();process.exit(7)`;
-    const running = runSession(a.id, [process.execPath, "-e", parentCode], { store: a.store, stdio: "inherit" });
+    const running = runSession(a.id, [process.execPath, "-e", parentCode], { store: a.store, stdio: "ignore" });
     let pid = 0;
     try {
       await vi.waitFor(async () => { pid = Number(await fs.readFile(marker, "utf8")); expect(pid).toBeGreaterThan(0); }, { timeout: 30_000 });
