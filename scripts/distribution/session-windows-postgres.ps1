@@ -22,7 +22,11 @@ try {
   Invoke-WebRequest ($base + 'SHA256SUMS') -OutFile $checksumFile -UseBasicParsing
   $checksums = Get-Content -Raw -LiteralPath $checksumFile
   $expected = ($checksums -split "`n" | Where-Object { $_ -match ([regex]::Escape($imageName) + '$') } | ForEach-Object { ($_ -split '\s+')[0] })
-  if (@($expected).Count -ne 1 -or (Get-FileHash -Algorithm SHA256 $archive).Hash -ine $expected) { throw 'Ubuntu WSL2 image checksum did not match.' }
+  $stream = [IO.File]::OpenRead($archive)
+  $sha256 = [Security.Cryptography.SHA256]::Create()
+  try { $actual = [BitConverter]::ToString($sha256.ComputeHash($stream)).Replace('-', '') }
+  finally { $stream.Dispose(); $sha256.Dispose() }
+  if (@($expected).Count -ne 1 -or $actual -ine $expected) { throw 'Ubuntu WSL2 image checksum did not match.' }
   $ownsDistribution = $true
   & wsl.exe --import $distro (Join-Path $fixture 'disk') $archive --version 2
   if ($LASTEXITCODE -ne 0) { throw 'Could not import the owned WSL2 test distribution.' }
