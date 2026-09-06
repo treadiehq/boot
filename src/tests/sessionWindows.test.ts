@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { execa } from "execa";
 import { randomBytes } from "node:crypto";
+import { pathToFileURL } from "node:url";
 import { createSession, inspectSession, releaseSession, gcSessions, processExists } from "../core/sessions";
 import { runSession } from "../core/sessionRun";
 import * as store from "../core/sessionStore";
@@ -28,7 +29,7 @@ const windows = process.platform === "win32" ? describe : describe.skip;
 windows("Windows native sessions", () => {
   let fixture: Awaited<ReturnType<typeof sessionFixture>>;
   const cow = process.env.BOOT_TEST_WINDOWS_EXPECT_COW === "1";
-  beforeEach(async () => { fixture = await sessionFixture(); vi.stubEnv("BOOT_HOME", fixture.home); }, 30_000);
+  beforeEach(async () => { fixture = await sessionFixture(); vi.stubEnv("BOOT_HOME", fixture.home); vi.stubEnv("BOOT_WINDOWS_TEST_TRACE", "1"); }, 30_000);
   afterEach(async () => { vi.restoreAllMocks(); vi.unstubAllEnvs(); await fs.rm(fixture.root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); }, 30_000);
   const command = (args: string[]) => execa(process.execPath, ["--import", "tsx", path.resolve("src/index.ts"), ...args], { reject: false });
   it("probes actual ReFS cloning or refuses NTFS, including partial clusters, empty files and Unicode", async () => {
@@ -53,11 +54,18 @@ windows("Windows native sessions", () => {
     await expect(windowsCloneFiles([{ source: original, destination: cloned }])).rejects.toThrow();
   }, 60_000);
   it("creates independent worktree/clone sessions and uses forced CoW only on ReFS", async () => {
+    const deep = path.join(...Array.from({ length: 8 }, () => "long-checkout-directory"), "nested.txt");
+    await fs.mkdir(path.dirname(path.join(fixture.source, deep)), { recursive: true });
+    await fs.writeFile(path.join(fixture.source, deep), "long checkout\n");
+    await requireGit(fixture.source, ["add", "."]);
+    await requireGit(fixture.source, ["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "-c", "commit.gpgsign=false", "commit", "-m", "long paths"]);
     for (const storage of ["worktree", "clone", "auto", "cow"] as const) {
       if (storage === "cow" && !cow) { await expect(createSession(fixture.source, { store: fixture.store, storage, name: storage })).rejects.toThrow(/CoW/); continue; }
       const a = await createSession(fixture.source, { store: fixture.store, storage, name: storage });
       expect(a.owner.sid).toBe(windowsUserSid());
       expect(a.repositories[0]!.backend).toBe(storage === "cow" || (storage === "auto" && cow) ? "refs-clone" : storage === "auto" ? "worktree" : storage);
+      expect(await fs.readFile(path.join(a.root, deep), "utf8")).toBe("long checkout\n");
+      expect((await execa("git", ["-C", a.root, "status", "--porcelain"], { reject: false })).exitCode).toBe(0);
       await fs.writeFile(path.join(a.root, "file.txt"), "edited\n"); await requireGit(a.root, ["add", "file.txt"]);
       expect(await requireGit(fixture.source, ["diff", "--cached", "--name-only"])).toBe("");
       expect(await fs.readFile(path.join(fixture.source, "file.txt"), "utf8")).toBe("original\n");
@@ -74,7 +82,8 @@ windows("Windows native sessions", () => {
     const result = path.join(fixture.root, "launch-result.json");
     await fs.writeFile(entry, `require('fs').writeFileSync(${JSON.stringify(result)},JSON.stringify({argv:process.argv.slice(2),cwd:process.cwd(),id:process.env.BOOT_SESSION_ID}));process.exit(23)`);
     await fs.writeFile(shim, '@ECHO off\r\nSET "_prog=node"\r\n"%_prog%" "%dp0%\\agent.cjs" %*\r\n');
-    const exit = await runSession(a.id, [shim, ...args], { store: a.store, stdio: "ignore" });
+    const timer = setTimeout(() => process.emit("SIGTERM", "SIGTERM"), 15_000);
+    const exit = await runSession(a.id, [shim, ...args], { store: a.store, stdio: "inherit" }).finally(() => clearTimeout(timer));
     expect(exit).toEqual({ code: 23, signal: null });
     const output = JSON.parse(await fs.readFile(result, "utf8"));
     expect(output).toEqual({ argv: args, cwd: a.root, id: a.id });
@@ -85,7 +94,7 @@ windows("Windows native sessions", () => {
     const marker = path.join(fixture.root, "descendant.json");
     const childCode = `require('fs').writeFileSync(${JSON.stringify(marker)},String(process.pid));setInterval(()=>{},1000)`;
     const parentCode = `const child=require('child_process').spawn(process.execPath,['-e',${JSON.stringify(childCode)}],{detached:true,stdio:'ignore'});child.unref();process.exit(7)`;
-    const running = runSession(a.id, [process.execPath, "-e", parentCode], { store: a.store, stdio: "ignore" });
+    const running = runSession(a.id, [process.execPath, "-e", parentCode], { store: a.store, stdio: "inherit" });
     let pid = 0;
     try {
       await vi.waitFor(async () => { pid = Number(await fs.readFile(marker, "utf8")); expect(pid).toBeGreaterThan(0); }, { timeout: 30_000 });
@@ -121,6 +130,18 @@ windows("Windows native sessions", () => {
       expect((await gcSessions({ store: a.store, apply: true })).sessions[0]!.action).toBe("removed");
     } finally { cli.kill("SIGKILL"); await cli; }
   }, 60_000);
+  it("stops an idle helper if its supervisor dies before authorizing launch", async () => {
+    const marker = path.join(fixture.root, "idle-helper.json"), script = path.join(fixture.root, "supervisor.mjs");
+    const module = pathToFileURL(path.resolve("src/core/sessionWindows.ts")).href;
+    await fs.writeFile(script, `import {windowsHelperPath,launchWindowsSession} from ${JSON.stringify(module)};import fs from 'node:fs';const launch=await launchWindowsSession(await windowsHelperPath(),[process.execPath,'-e','process.exit(0)'],${JSON.stringify(fixture.source)},process.env,'ignore');fs.writeFileSync(${JSON.stringify(marker)},String(launch.child.pid));setInterval(()=>{},1000);`);
+    const parent = execa(process.execPath, ["--import", "tsx", script], { reject: false });
+    try {
+      let helper = 0;
+      await vi.waitFor(async () => { helper = Number(await fs.readFile(marker, "utf8")); expect(helper).toBeGreaterThan(0); }, { timeout: 30_000 });
+      parent.kill("SIGKILL"); await parent;
+      await vi.waitFor(() => expect(processExists(helper)).toBe(false), { timeout: 10_000 });
+    } finally { parent.kill("SIGKILL"); await parent; }
+  }, 60_000);
   it("refuses junction replacement, named streams, device paths, and a changed owner SID", async () => {
     const a = await createSession(fixture.source, { store: fixture.store, storage: "clone" });
     for (const name of ["file:stream", "NUL", "dir/COM1.txt", "name.", "name "]) expect(() => resolveWithinRoot(a.root, name)).toThrow(/Windows/);
@@ -139,7 +160,7 @@ windows("Windows native sessions", () => {
     if (!binary) { context.skip("standalone binary supplied by CI"); return; }
     const a = await createSession(fixture.source, { store: fixture.store, storage: cow ? "cow" : "worktree" });
     const result = await execa(binary, ["session", "run", a.id, "--store", a.store, "--", process.execPath, "-e", "process.exit(41)"], { reject: false, timeout: 25_000 });
-    if (result.timedOut) console.error("Standalone timeout state:", (await store.findSession(a.id, a.store)).launch);
+    if (result.timedOut) console.error("Standalone timeout state:", (await store.findSession(a.id, a.store)).launch, result.stderr);
     expect(result.exitCode).toBe(41);
     expect((await inspectSession(a.id, a.store)).session.lastExit?.code).toBe(41);
   }, 60_000);

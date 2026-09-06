@@ -12,6 +12,7 @@ using System.Security.Principal;
 using Microsoft.Win32.SafeHandles;
 
 public static class BootWindows {
+  static void Trace(string message) { if (Environment.GetEnvironmentVariable("BOOT_WINDOWS_TEST_TRACE") == "1") Console.Error.WriteLine("Windows helper: " + message); }
   [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)] static extern SafeFileHandle CreateFileW(string name, uint access, uint share, IntPtr security, uint disposition, uint flags, IntPtr template);
   [DllImport("kernel32.dll", SetLastError=true)] static extern bool GetFileSizeEx(SafeFileHandle file, out long size);
   [DllImport("kernel32.dll", SetLastError=true)] static extern bool SetFilePointerEx(SafeFileHandle file, long distance, out long result, uint method);
@@ -148,11 +149,19 @@ public static class BootWindows {
   static int Run(string[] args) {
     IntPtr job = CreateJobObjectW(IntPtr.Zero, null), parent = OpenProcess(0x100000, false, UInt32.Parse(args[1]));
     if (job == IntPtr.Zero || parent == IntPtr.Zero) throw new Win32Exception(Marshal.GetLastWin32Error());
-    ProcessInfo child = new ProcessInfo();
+    ProcessInfo child = new ProcessInfo(); int finished = 0;
     try {
       ExtendedLimit limits = new ExtendedLimit(); limits.basic.flags = 0x2000;
       Check(SetInformationJobObject(job, 9, ref limits, (uint)Marshal.SizeOf(typeof(ExtendedLimit))));
       Check(SetConsoleCtrlHandler(IgnoreConsole, true));
+      // Monitor even while pipe startup is blocked. A runtime may accidentally
+      // inherit a server handle, so pipe EOF alone cannot prove parent death.
+      Thread supervisor = new Thread(delegate() {
+        while (Interlocked.CompareExchange(ref finished, 0, 0) == 0) {
+          if (WaitForSingleObject(parent, 0) == 0) { TerminateJobObject(job, 130); Environment.Exit(130); }
+          Thread.Sleep(50);
+        }
+      }); supervisor.IsBackground = true; supervisor.Start();
       using (NamedPipeClientStream pipe = new NamedPipeClientStream(".", args[2], PipeDirection.InOut)) {
         pipe.Connect(15000);
         StreamReader reader = new StreamReader(pipe, new UTF8Encoding(false));
@@ -161,6 +170,7 @@ public static class BootWindows {
         if (reader.ReadLine() != "start" || WaitForSingleObject(parent, 0) == 0) return 130;
         string[] command = new string[args.Length - 3]; Array.Copy(args, 3, command, 0, command.Length);
         child = Start(command, job);
+        Trace("agent created " + child.pid);
         try { Check(ResumeThread(child.thread) != 0xffffffff); }
         catch { TerminateProcess(child.process, 127); throw; }
         int cancelled = 0; ManualResetEvent acknowledged = new ManualResetEvent(false);
@@ -176,17 +186,20 @@ public static class BootWindows {
             TerminateJobObject(job, 130);
           } catch { TerminateJobObject(job, 130); }
         }); control.IsBackground = true; control.Start();
-        uint exit = 0;
+        uint exit = 0; uint lastActive = UInt32.MaxValue; bool childExited = false;
         while (true) {
           if (WaitForSingleObject(parent, 0) == 0) { TerminateJobObject(job, 130); return 130; }
           Accounting accounting; Check(QueryInformationJobObject(job, 1, out accounting, (uint)Marshal.SizeOf(typeof(Accounting)), IntPtr.Zero));
+          if (accounting.active != lastActive) { lastActive = accounting.active; Trace("active processes " + lastActive); }
+          if (!childExited && WaitForSingleObject(child.process, 0) == 0) { childExited = true; Trace("agent exited"); }
           if (accounting.active == 0) { Check(GetExitCodeProcess(child.process, out exit)); break; }
           Thread.Sleep(30);
         }
-        writer.WriteLine("done " + exit); acknowledged.WaitOne(5000);
+        writer.WriteLine("done " + exit); Trace("completion sent"); acknowledged.WaitOne(5000); Trace("returning");
         return unchecked((int)exit);
       }
     } finally {
+      Interlocked.Exchange(ref finished, 1);
       if (child.thread != IntPtr.Zero) CloseHandle(child.thread);
       if (child.process != IntPtr.Zero) CloseHandle(child.process);
       CloseHandle(job); CloseHandle(parent);

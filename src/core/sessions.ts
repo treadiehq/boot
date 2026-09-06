@@ -82,6 +82,7 @@ async function prepareSeed(record: SessionRecord, repository: SessionRepository,
   const clone = path.join(temporary, "repository");
   try {
     await requireGit(temporary, ["clone", "--no-local", "--no-checkout", "--", repository.source, clone]);
+    if (process.platform === "win32") await requireGit(clone, ["config", "core.longpaths", "true"]);
     // --no-local deliberately avoids hard links and object alternates.
     for (const ref of lines(await requireGit(clone, ["for-each-ref", "--format=%(refname)"]))) await requireGit(clone, ["update-ref", "-d", ref]);
     await requireGit(clone, ["update-ref", "refs/heads/boot-seed", snapshot]);
@@ -247,6 +248,7 @@ export async function createSession(sourceInput: string, options: CreateSessionO
           await writeSession(record);
           await requireGit(path.dirname(destination), ["clone", "--no-local", "--no-checkout", "--", seedPath(record, repo), destination]);
         }
+        if (process.platform === "win32") await requireGit(destination, ["config", "core.longpaths", "true"]);
         if (repo.backend !== "worktree") await requireGit(destination, ["checkout", "-b", repo.branch, snapshot]);
         // Session refs intentionally have no automatic upstream or push target.
         await requireGit(destination, ["config", "push.default", "nothing"]);

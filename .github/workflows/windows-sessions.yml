@@ -2,7 +2,7 @@ name: Windows sessions
 
 on:
   push:
-    branches: [main, codex/windows-sessions]
+    branches: [main]
     paths:
       - src/**
       - scripts/distribution/session-windows.ps1
