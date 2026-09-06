@@ -28,7 +28,7 @@ create vdisk file="$disk" maximum=4096 type=expandable
     try {
       & diskpart /s $commands
       if ($LASTEXITCODE -ne 0) { throw 'Could not create the disposable ReFS test volume.' }
-      $diskInfo = Mount-DiskImage -ImagePath $disk -StorageType VHD -NoDriveLetter -PassThru | Get-Disk
+      $diskInfo = Mount-DiskImage -ImagePath $disk -NoDriveLetter -PassThru | Get-Disk
       if (@($diskInfo).Count -ne 1 -or $diskInfo.PartitionStyle -ne 'RAW') { throw 'The newly created test disk is not an empty image.' }
       $diskInfo | Initialize-Disk -PartitionStyle GPT -PassThru | New-Partition -UseMaximumSize -DriveLetter $letter | Format-Volume -FileSystem ReFS -AllocationUnitSize $cluster -NewFileSystemLabel $label -Confirm:$false | Out-Null
       $volume = Get-Volume -DriveLetter $letter
