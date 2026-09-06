@@ -162,7 +162,9 @@ public static class BootWindows {
           Thread.Sleep(50);
         }
       }); supervisor.IsBackground = true; supervisor.Start();
-      using (NamedPipeClientStream pipe = new NamedPipeClientStream(".", args[2], PipeDirection.InOut)) {
+      // Overlapped mode allows the control read and completion write to proceed
+      // concurrently; a synchronous Windows pipe serializes them and deadlocks.
+      using (NamedPipeClientStream pipe = new NamedPipeClientStream(".", args[2], PipeDirection.InOut, PipeOptions.Asynchronous)) {
         pipe.Connect(15000);
         StreamReader reader = new StreamReader(pipe, new UTF8Encoding(false));
         StreamWriter writer = new StreamWriter(pipe, new UTF8Encoding(false)); writer.AutoFlush = true;
