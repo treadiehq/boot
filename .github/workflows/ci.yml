@@ -31,6 +31,9 @@ jobs:
       - name: Typecheck
         run: pnpm lint
 
+      - name: Check benchmark tooling
+        run: pnpm check:benchmarks
+
       - name: Test
         run: pnpm test:run
 

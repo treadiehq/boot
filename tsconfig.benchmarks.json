@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "rootDir": "." },
+  "include": ["scripts/benchmarks/session-comparison.ts", "scripts/benchmarks/session-runtime.ts"]
+}

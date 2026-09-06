@@ -32,6 +32,15 @@ commands:
   session-benchmark:
     run: pnpm benchmark:sessions
     repository: boot
+  session-comparison-benchmark:
+    run: pnpm benchmark:sessions:compare
+    repository: boot
+  session-runtime-benchmark:
+    run: pnpm benchmark:sessions:runtime
+    repository: boot
+  check-benchmarks:
+    run: pnpm check:benchmarks
+    repository: boot
   session-agent-demo:
     run: pnpm demo:sessions
     repository: boot

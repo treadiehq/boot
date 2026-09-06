@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "measuredAt": "2026-09-06T19:34:01.183Z",
+  "platform": "darwin",
+  "architecture": "arm64",
+  "node": "v22.23.1",
+  "backend": "apfs-clone",
+  "measurement": "allocated blocks from statfs on a dedicated APFS disk image; sync and clean unmount/remount before each measurement to commit delayed allocations; includes seed and session metadata; does not sum directory sizes",
+  "sourcePreparationMs": 21210.407834,
+  "dependencies": {
+    "bytes": 832560523,
+    "files": 27491
+  },
+  "rows": [
+    {
+      "sessions": 1,
+      "creationMs": [
+        13101.613916999999
+      ],
+      "seedAndSessionsPhysicalBytes": 24948736,
+      "physicalGrowthAfterEditsBytes": 1048576,
+      "reclaimedBytes": 25989120,
+      "retainedOverheadBytes": 8192
+    },
+    {
+      "sessions": 4,
+      "creationMs": [
+        13541.877917000005,
+        6746.556833000002,
+        6866.170333000002,
+        6806.1048750000045
+      ],
+      "seedAndSessionsPhysicalBytes": 62337024,
+      "physicalGrowthAfterEditsBytes": 4194304,
+      "reclaimedBytes": 66363392,
+      "retainedOverheadBytes": 167936
+    },
+    {
+      "sessions": 8,
+      "creationMs": [
+        14035.455124999993,
+        6831.152000000002,
+        6678.719041999997,
+        6684.582541999989,
+        6719.868583000003,
+        6772.355209000001,
+        6593.375958999997,
+        6696.9005419999885
+      ],
+      "seedAndSessionsPhysicalBytes": 112812032,
+      "physicalGrowthAfterEditsBytes": 8396800,
+      "reclaimedBytes": 121081856,
+      "retainedOverheadBytes": 126976
+    }
+  ]
+}

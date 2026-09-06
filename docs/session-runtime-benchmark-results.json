@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "measuredAt": "2026-09-06T19:46:09.291Z",
+  "implementationCommit": "b0174933eeb8fa94e75443bba009a79e00963976",
+  "platform": "darwin",
+  "architecture": "arm64",
+  "node": "v22.23.1",
+  "cpu": "Apple M3 Max",
+  "logicalCpus": 14,
+  "memoryBytes": 38654705664,
+  "engine": "29.7.2",
+  "image": "postgres:17-alpine",
+  "imageId": "sha256:8ee7c900f4de054e8f0a3b42b8f5da38b8fba57c3ccd7c1a02be28cb0b06494f",
+  "psqlVersion": "psql (PostgreSQL) 14.18 (Homebrew)",
+  "methodology": "One local sample per count using a minimal prepared repository and clone storage. Docker image preparation is excluded. Concurrent create/run requests share one Boot store, including store-lock queue time. All workers bind their assigned app port and authenticate from the host before a barrier starts independent 10,000-row SQL transactions. Work duration includes process exit and Boot bookkeeping; it is not AI inference or a general PostgreSQL throughput benchmark. Idle container memory is a single Docker stats sample before launch. Release/restart verifies persisted, session-specific rows. Exact owned container, volume, and network removal is verified.",
+  "rows": [
+    {
+      "sessions": 1,
+      "provisionMs": 3841.9689580000004,
+      "launchUntilAllReadyMs": 628.8516669999999,
+      "workAndExitMs": 203.34587499999998,
+      "releaseMs": 262.0339589999994,
+      "restartAndVerifyMs": 406.72612500000014,
+      "cleanupAndVerifyMs": 1604.5872499999996,
+      "idleDatabaseMemoryBytes": 85930803.2,
+      "peakConcurrentSqlWorkers": 1,
+      "successfulWorkers": 1,
+      "rowsPerWorker": 10000,
+      "workerSqlMs": [
+        190
+      ],
+      "persistenceVerified": true,
+      "cleanupVerified": true
+    },
+    {
+      "sessions": 4,
+      "provisionMs": 8065.603458,
+      "launchUntilAllReadyMs": 1243.8921669999982,
+      "workAndExitMs": 500.9745830000029,
+      "releaseMs": 1071.6435840000013,
+      "restartAndVerifyMs": 1315.7669170000008,
+      "cleanupAndVerifyMs": 6598.017958,
+      "idleDatabaseMemoryBytes": 101240012.79999998,
+      "peakConcurrentSqlWorkers": 4,
+      "successfulWorkers": 4,
+      "rowsPerWorker": 10000,
+      "workerSqlMs": [
+        184,
+        182,
+        187,
+        177
+      ],
+      "persistenceVerified": true,
+      "cleanupVerified": true
+    },
+    {
+      "sessions": 8,
+      "provisionMs": 15902.596666999998,
+      "launchUntilAllReadyMs": 2490.634082999997,
+      "workAndExitMs": 831.067833000001,
+      "releaseMs": 2256.826540999995,
+      "restartAndVerifyMs": 2943.5466249999954,
+      "cleanupAndVerifyMs": 13302.606666000007,
+      "idleDatabaseMemoryBytes": 197813862.39999998,
+      "peakConcurrentSqlWorkers": 8,
+      "successfulWorkers": 8,
+      "rowsPerWorker": 10000,
+      "workerSqlMs": [
+        185,
+        193,
+        193,
+        186,
+        182,
+        186,
+        182,
+        193
+      ],
+      "persistenceVerified": true,
+      "cleanupVerified": true
+    }
+  ]
+}

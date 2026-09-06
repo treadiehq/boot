@@ -353,3 +353,11 @@ before/after 1 MiB writes per session, and reclaimed storage. Clean
 unmount/remount cycles commit APFS delayed allocations before measurement. Shared
 blocks are counted once by filesystem allocation, not summed directory sizes.
 Results are written to `docs/session-benchmark-results.json`.
+
+The [v0.4.0 benchmark report](session-benchmarks.md) adds a comparison with plain
+Git worktrees and independent clones, time until a prepared workspace can run,
+and parallel PostgreSQL workloads. Reproduce those with
+`pnpm benchmark:sessions:compare` (macOS/APFS) and
+`pnpm benchmark:sessions:runtime` (local Docker Engine 28+ and a native `psql`
+client on PATH). Both commands create and clean up only disposable fixtures.
+Run the suites sequentially to avoid competing for local resources.
