@@ -279,7 +279,7 @@ async function realizePublishedWorkspace(
   );
   const provider = getWorkspaceProvider(options.provider ?? "local");
   const planningRoot = options.dryRun ? source.inspectionRoot : root;
-  const initialPlan = await provider.plan(planningRoot, workspace);
+  const initialPlan = await provider.plan(planningRoot, workspace, { probe: !options.dryRun });
   // A preview map may live under a temporary root. Repository paths and the
   // user-facing result still refer to the requested target.
   const plan =

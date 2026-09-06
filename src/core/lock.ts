@@ -146,12 +146,23 @@ async function acquireGuard(
   label: string,
   timing: LockTiming,
 ): Promise<string> {
+  let transientError: unknown;
   while (Date.now() < timing.deadline) {
-    const ownerPath = await tryCreateGuard(guardPath);
-    if (ownerPath) return ownerPath;
-    if (await reapStaleGuard(guardPath, timing.staleAfterMs)) continue;
+    try {
+      const ownerPath = await tryCreateGuard(guardPath);
+      if (ownerPath) return ownerPath;
+      transientError = undefined;
+      if (await reapStaleGuard(guardPath, timing.staleAfterMs)) continue;
+    } catch (error) {
+      // Windows may briefly deny access while a previous guard deletion is
+      // pending. Retry acquisition within its existing deadline, without
+      // assuming ownership or deleting an unverified guard.
+      if (process.platform !== "win32" || errorCode(error) !== "EPERM") throw error;
+      transientError = error;
+    }
     await sleep();
   }
+  if (transientError) throw transientError;
   throw timeoutError(label);
 }
 

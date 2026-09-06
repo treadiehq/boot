@@ -31,8 +31,13 @@ echo "Building boot v$VERSION with Bun $(bun --version)"
 # The embed rewrites src/core/uiEmbedded.ts; always restore the stub on exit.
 echo "Building boot ui assets"
 (cd "$ROOT" && pnpm ui:build >/dev/null)
-trap 'node "$ROOT/scripts/embed-ui.mjs" --reset >/dev/null' EXIT
+trap 'node "$ROOT/scripts/embed-ui.mjs" --reset >/dev/null; node "$ROOT/scripts/embed-session-native.mjs" --reset >/dev/null' EXIT
 node "$ROOT/scripts/embed-ui.mjs"
+if [ "$(uname -s)" = "Darwin" ]; then
+  node "$ROOT/scripts/embed-session-native.mjs"
+else
+  echo "Cross-built macOS artifacts will compile the clonefile helper on first use; official releases embed it on macOS runners." >&2
+fi
 
 rm -rf "$OUT"
 mkdir -p "$OUT"

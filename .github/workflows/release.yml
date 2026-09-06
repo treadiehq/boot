@@ -71,6 +71,7 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           if echo "${{ matrix.target }}" | grep -q darwin; then
             export BUN_NO_CODESIGN_MACHO_BINARY=1
+            node scripts/embed-session-native.mjs
           fi
           bun build src/index.ts \
             --compile \
@@ -108,6 +109,16 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: bash scripts/distribution/e2e.sh --binary "${{ matrix.artifact }}"
+
+      - name: Setup pnpm for Windows distribution validation
+        if: runner.os == 'Windows'
+        uses: pnpm/action-setup@v4
+
+      - name: Windows session distribution E2E
+        if: runner.os == 'Windows'
+        run: pnpm test:sessions:windows
+        env:
+          BOOT_TEST_WINDOWS_BINARY: ${{ github.workspace }}/${{ matrix.artifact }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

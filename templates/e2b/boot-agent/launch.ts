@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { Sandbox } from "e2b";
+import { formatE2BError } from "./errors";
 
 const DEFAULT_TIMEOUT_MS = 15 * 60 * 1000;
 
@@ -218,7 +219,7 @@ async function main(): Promise<void> {
 }
 
 main().catch((error: unknown) => {
-  const message = error instanceof Error ? error.message : String(error);
+  const message = formatE2BError(error);
   process.stderr.write(`E2B launch failed: ${message}\n`);
   process.exitCode = 1;
 });

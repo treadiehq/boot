@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "measuredAt": "2026-09-06T16:35:18.257Z",
+  "results": [
+    {
+      "agent": "codex",
+      "version": "codex-cli 0.153.3",
+      "exitCode": 0,
+      "backend": "apfs-clone",
+      "rootVerified": true,
+      "worktreeRegistrationUnchanged": true,
+      "gcProtectedWork": true
+    },
+    {
+      "agent": "claude",
+      "version": "2.1.261 (Claude Code)",
+      "exitCode": 0,
+      "backend": "apfs-clone",
+      "rootVerified": true,
+      "worktreeRegistrationUnchanged": true,
+      "gcProtectedWork": true
+    }
+  ],
+  "sourceUnchanged": true
+}

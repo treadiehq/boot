@@ -1,6 +1,6 @@
 {
   "name": "boot",
-  "version": "0.3.8",
+  "version": "0.4.0",
   "description": "Your workspace, wherever you work.",
   "type": "module",
   "bin": {
@@ -14,6 +14,13 @@
     "build": "tsup src/index.ts --format esm,cjs --dts",
     "test": "vitest",
     "test:run": "vitest run",
+    "test:sessions": "vitest run src/tests/sessions.test.ts src/tests/sessionFailures.test.ts src/tests/sessionProcesses.test.ts src/tests/sessionNative.test.ts src/tests/preparationRegressions.test.ts src/tests/sessionSubmodules.test.ts src/tests/sessionRuntime.test.ts src/tests/sessionWindowsShims.test.ts src/tests/sessionDocker.test.ts",
+    "test:sessions:runtime": "node scripts/distribution/session-runtime.mjs",
+    "test:sessions:windows:postgres": "powershell.exe -NoLogo -NoProfile -NonInteractive -File scripts/distribution/session-windows-postgres.ps1",
+    "test:sessions:windows": "powershell.exe -NoLogo -NoProfile -NonInteractive -File scripts/distribution/session-windows.ps1",
+    "test:sessions:linux": "bash scripts/distribution/session-linux.sh",
+    "benchmark:sessions": "tsx scripts/benchmarks/sessions.ts",
+    "demo:sessions": "tsx examples/agent-sessions/demo.ts",
     "lint": "tsc --noEmit",
     "qa": "bash scripts/qa.sh",
     "test:distribution:linux": "bash scripts/distribution/e2e.sh",

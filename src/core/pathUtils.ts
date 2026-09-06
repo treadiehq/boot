@@ -1,4 +1,5 @@
 import path from "node:path";
+import { lstatSync } from "node:fs";
 import { z } from "zod";
 import { quoteUserValue } from "./userErrors";
 
@@ -86,6 +87,9 @@ export function resolveWithinRoot(root: string, relativePath: string): string {
     );
   }
 
+  if (process.platform === "win32" && relativePath.split("/").some((part) => /[<>:"|?*]/.test(part) || /[. ]$/.test(part) || /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(part))) {
+    throw new Error("Windows workspace paths cannot use device names, named streams, or ambiguous trailing characters.");
+  }
   const absoluteRoot = path.resolve(root);
   const target = path.resolve(absoluteRoot, ...relativePath.split("/"));
   const rootPrefix = absoluteRoot.endsWith(path.sep) ? absoluteRoot : `${absoluteRoot}${path.sep}`;
@@ -93,6 +97,20 @@ export function resolveWithinRoot(root: string, relativePath: string): string {
     throw new Error(
       `Workspace path ${quoteUserValue(relativePath)} points outside the workspace. Use a relative path inside the workspace.`,
     );
+  }
+  // Reject links at every existing component, including dangling links. A
+  // lexical prefix alone does not contain writes through a symlinked parent.
+  let current = absoluteRoot;
+  for (const component of relativePath.split("/")) {
+    current = path.join(current, component);
+    try {
+      if (lstatSync(current).isSymbolicLink()) {
+        throw new Error(`Workspace path ${quoteUserValue(relativePath)} contains a symlink. Use a physical path inside the workspace.`);
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") break;
+      throw error;
+    }
   }
   return target;
 }

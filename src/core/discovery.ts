@@ -14,6 +14,8 @@ import {
   type WorkspaceDefinition,
 } from "./workspace";
 import { readPublishedWorkspace } from "./workspaceStore";
+import { findSession, readJson } from "./sessionStore";
+import { resolveWithinRoot } from "./pathUtils";
 
 const packageJsonSchema = z
   .object({
@@ -263,6 +265,13 @@ export async function discoverWorkspace(workspacePath: string): Promise<Workspac
 
 /** Load the canonical definition, or synthesize one for legacy Workspaces. */
 export async function loadWorkspaceDefinition(workspacePath: string): Promise<WorkspaceDefinition> {
+  const pointer = await readJson(resolveWithinRoot(workspacePath, ".boot/session.json"));
+  if (pointer) {
+    const parsed = z.object({ schemaVersion: z.literal(1), id: z.string().uuid(), store: z.string() }).strict().parse(pointer);
+    const session = await findSession(parsed.id, parsed.store);
+    if (session.root !== await fs.realpath(workspacePath)) throw new Error("Session identity does not match this physical workspace.");
+    return session.definition;
+  }
   const config = await loadConfig(workspacePath);
   if (config.definition) return config.definition;
   if (isLinked(workspacePath)) {

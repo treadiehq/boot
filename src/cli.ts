@@ -47,6 +47,7 @@ import { parseFullGitSha } from "./core/git";
 import { validateUiPort } from "./core/uiServer";
 import { validateWatchDebounce } from "./core/watcher";
 import { logger } from "./ui/logger";
+import { addSessionCommands } from "./commands/session";
 
 export const DEFAULT_MANIFEST_NAME = "boot-workspace.json";
 
@@ -226,6 +227,7 @@ export function buildProgram(): Command {
     );
 
   program.commandsGroup("Other commands:");
+  addSessionCommands(program);
 
   program
     .command("version")

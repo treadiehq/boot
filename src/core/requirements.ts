@@ -56,28 +56,38 @@ function compareVersion(left: number[], right: number[]): number {
   return 0;
 }
 
-/** A deliberately small matcher for common runtime requirements. */
+/** Common numeric runtime ranges. Unknown syntax fails closed. */
 export function versionSatisfies(observed: string, requirement: string): boolean {
   const actual = numericVersion(observed);
-  const required = numericVersion(requirement);
-  if (!actual || !required) return observed.includes(requirement);
-
-  const trimmed = requirement.trim();
-  if (trimmed.startsWith(">=")) return compareVersion(actual, required) >= 0;
-  if (trimmed.startsWith(">")) return compareVersion(actual, required) > 0;
-  if (trimmed.startsWith("<=")) return compareVersion(actual, required) <= 0;
-  if (trimmed.startsWith("<")) return compareVersion(actual, required) < 0;
-  if (trimmed.startsWith("^")) return actual[0] === required[0] && compareVersion(actual, required) >= 0;
-  if (trimmed.startsWith("~")) {
-    return (
-      actual[0] === required[0] &&
-      actual[1] === required[1] &&
-      compareVersion(actual, required) >= 0
-    );
-  }
-
-  const requestedParts = trimmed.replace(/^v/, "").split(".").length;
-  return actual.slice(0, requestedParts).every((part, index) => part === required[index]);
+  if (!actual) return false;
+  return requirement.split("||").some((alternative) => {
+    const normalized = alternative.trim().replace(/(>=|<=|>|<|=|\^|~)\s+/g, "$1");
+    if (!normalized) return false;
+    return normalized.split(/\s+/).every((expression) => {
+      if (/^(\*|x)$/i.test(expression)) return true;
+      const match = expression.match(/^(>=|<=|>|<|=|\^|~)?v?(\d+)(?:\.(\d+|x|\*))?(?:\.(\d+|x|\*))?$/i);
+      if (!match) return false;
+      const operator = match[1] ?? "=";
+      const parts = match.slice(2).filter((part): part is string => part !== undefined);
+      const count = parts.findIndex((part) => /[x*]/i.test(part));
+      const precision = count < 0 ? parts.length : count;
+      const required = [0, 1, 2].map((index) => index < precision ? Number(parts[index]) : 0);
+      const comparison = compareVersion(actual, required);
+      if (operator === ">=") return comparison >= 0;
+      if (operator === ">") return comparison > 0;
+      if (operator === "<=") return comparison <= 0;
+      if (operator === "<") return comparison < 0;
+      if (operator === "^" || operator === "~") {
+        const upper = [...required];
+        const significant = operator === "~" ? Math.min(1, precision - 1)
+          : Math.min(required.findIndex((part) => part !== 0) < 0 ? 2 : required.findIndex((part) => part !== 0), precision - 1);
+        upper[significant] = upper[significant]! + 1;
+        for (let index = significant + 1; index < 3; index++) upper[index] = 0;
+        return comparison >= 0 && compareVersion(actual, upper) < 0;
+      }
+      return actual.slice(0, precision).every((part, index) => part === required[index]);
+    });
+  });
 }
 
 const TOOL_PROBES: Record<string, { command: string; args: string[] }> = {
@@ -123,7 +133,7 @@ export async function inspectTools(
     statuses.push({
       name,
       required,
-      observed: result.output,
+      observed: result.output.match(/\bv?\d+(?:\.\d+){1,2}\b/)?.[0],
       state: versionSatisfies(result.output, required) ? "available" : "mismatch",
     });
   }
@@ -138,7 +148,7 @@ function observedVersionStatus(
   return {
     name,
     required,
-    observed,
+    observed: observed.match(/\bv?\d+(?:\.\d+){1,2}\b/)?.[0],
     state: versionSatisfies(observed, required) ? "available" : "mismatch",
   };
 }
@@ -161,7 +171,7 @@ async function inspectPostgres(
     };
   }
   if (!required) {
-    return { name, required, state: "available", observed: ready.output };
+    return { name, required, state: "available" };
   }
   if (versionCheck) {
     return inspectDeclaredVersion(name, required, versionCheck, cwd, ready.output);
@@ -178,7 +188,6 @@ async function inspectPostgres(
       name,
       required,
       state: "unsupported",
-      ...(ready.output ? { observed: ready.output } : {}),
       detail:
         "PostgreSQL is ready, but Boot could not verify its server version; ensure `psql` can connect to the same server or add a `versionCheck` command",
     };
@@ -243,7 +252,7 @@ async function inspectDocker(
     return inspectDeclaredVersion(name, required, versionCheck, cwd, result.output);
   }
   if (required) return observedVersionStatus(name, required, result.output);
-  return { name, required, observed: result.output, state: "available" };
+  return { name, required, observed: result.output.match(/\bv?\d+(?:\.\d+){1,2}\b/)?.[0], state: "available" };
 }
 
 export interface ServiceInspectOptions {
@@ -284,7 +293,6 @@ async function inspectDeclaredVersion(
       name,
       required,
       state: "unsupported",
-      ...(healthObserved ? { observed: healthObserved } : {}),
       detail:
         `the service is healthy, but its version could not be verified; run ` +
         `${quoteUserValue(command)} for details, fix the reported problem, then retry`,
@@ -318,7 +326,6 @@ export async function inspectService(
           name,
           required: definition.version,
           state: "unsupported",
-          ...(result.output ? { observed: result.output } : {}),
           detail:
             "health check passed, but the running service version was not verified; add a `versionCheck` command that prints the version to stdout",
         };
@@ -335,7 +342,6 @@ export async function inspectService(
       name,
       required: definition.version,
       state: "available",
-      ...(result.output ? { observed: result.output } : {}),
     };
   }
   const type = definition.type ?? name;
@@ -387,7 +393,7 @@ export interface EnvironmentStatus {
   secret: boolean;
   source?: string;
   available: boolean;
-  availableFrom?: "process" | "boot";
+  availableFrom?: "process" | "boot" | "session";
 }
 
 export function inspectProcessEnvironment(

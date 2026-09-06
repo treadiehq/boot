@@ -81,6 +81,14 @@ const environmentVariableNameSchema = z
   .string()
   .regex(/^[A-Za-z_][A-Za-z0-9_]*$/, "must be an environment variable name");
 
+const runtimeEnvironmentNameSchema = environmentVariableNameSchema.refine((name) => !name.toUpperCase().startsWith("BOOT_")
+  && !["PATH", "HOME", "NODE_OPTIONS", "LD_PRELOAD", "DYLD_INSERT_LIBRARIES"].includes(name.toUpperCase()), "must be an application-specific environment name");
+export const runtimeDefinitionSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("port"), env: runtimeEnvironmentNameSchema }).strict(),
+  z.object({ type: z.literal("postgres"), env: runtimeEnvironmentNameSchema, version: z.enum(["16", "17"]).default("17") }).strict(),
+]);
+export type RuntimeDefinition = z.infer<typeof runtimeDefinitionSchema>;
+
 export const environmentRequirementSchema = z.union([
   environmentVariableNameSchema,
   z
@@ -108,6 +116,7 @@ export const profileDefinitionSchema = z
     services: selectionSchema.optional(),
     commands: selectionSchema.optional(),
     env: environmentSelectionSchema.optional(),
+    runtime: selectionSchema.optional(),
     hydrate: materializationSchema.optional(),
     readOnly: z.boolean().optional(),
   })
@@ -166,6 +175,7 @@ export const workspaceDefinitionSchema = z
     repositories: repositoryRecordSchema,
     tools: z.record(identifierSchema, z.string().min(1)).optional(),
     services: z.record(identifierSchema, serviceDefinitionSchema).optional(),
+    runtime: z.record(identifierSchema, runtimeDefinitionSchema).optional(),
     commands: z.record(identifierSchema, commandDefinitionSchema).optional(),
     env: z
       .object({
@@ -196,7 +206,7 @@ export const workspaceDefinitionSchema = z
 
     const validateSelection = (
       profileId: string,
-      field: "repositories" | "tools" | "services" | "commands" | "env",
+      field: "repositories" | "tools" | "services" | "commands" | "env" | "runtime",
       values: "all" | string[] | undefined,
       available: Set<string>,
     ): void => {
@@ -218,6 +228,15 @@ export const workspaceDefinitionSchema = z
       validateSelection(profileId, "services", profile.services, serviceIds);
       validateSelection(profileId, "commands", profile.commands, commandIds);
       validateSelection(profileId, "env", profile.env, envIds);
+      validateSelection(profileId, "runtime", profile.runtime, new Set(Object.keys(definition.runtime ?? {})));
+    }
+
+    const runtimeEnvNames = new Set<string>();
+    for (const [id, resource] of Object.entries(definition.runtime ?? {})) {
+      if (runtimeEnvNames.has(resource.env)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["runtime", id, "env"], message: "runtime environment names must be unique" });
+      runtimeEnvNames.add(resource.env);
+      const service = definition.services?.[id];
+      if (service && resource.type === "postgres" && !["postgres", "postgresql"].includes(service.type ?? id)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["runtime", id], message: "a PostgreSQL runtime may replace only a matching PostgreSQL service" });
     }
 
     for (const [serviceId, service] of Object.entries(definition.services ?? {})) {
@@ -288,6 +307,7 @@ export interface ResolvedWorkspace {
   repositories: ResolvedRepository[];
   tools: Record<string, string>;
   services: Record<string, ServiceDefinition>;
+  runtime?: Record<string, RuntimeDefinition>;
   commands: Record<string, ResolvedCommand>;
   env: ResolvedEnvironmentRequirement[];
   constraints: string[];
@@ -343,6 +363,7 @@ export function resolveWorkspace(
       definition.services?.[id]!,
     ]),
   );
+  const runtime = Object.fromEntries(selectedIds(profile?.runtime, definition.runtime ?? {}).map((id) => [id, definition.runtime![id]!]));
 
   const commands: Record<string, ResolvedCommand> = {};
   for (const id of selectedIds(profile?.commands, definition.commands ?? {})) {
@@ -385,6 +406,7 @@ export function resolveWorkspace(
     repositories,
     tools,
     services,
+    ...(Object.keys(runtime).length ? { runtime } : {}),
     commands,
     env,
     constraints: definition.constraints ?? [],

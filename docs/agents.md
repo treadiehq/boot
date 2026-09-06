@@ -10,6 +10,21 @@ Every agent integration follows the same contract:
 
 ## Claude Code
 
+For a managed task workspace:
+
+```bash
+boot session create . --profile agent --name claude-fix --storage auto
+boot session run claude-fix -- claude
+```
+
+Launch the CLI directly and omit its opt-in `--worktree` / `-w` flag. Claude's
+desktop worktree behavior is separate. Boot cannot prevent a tool or agent from
+explicitly creating another checkout. See the official
+[CLI reference](https://code.claude.com/docs/en/cli-reference) and
+[worktree documentation](https://code.claude.com/docs/en/worktrees).
+
+For preparation in an existing workspace:
+
 ```bash
 boot up /workspace --profile agent
 boot inspect /workspace --json > /tmp/boot-context.json
@@ -44,6 +59,23 @@ Use commands declared in the Boot context.
 
 ## Codex
 
+For a managed task workspace:
+
+```bash
+boot session create . --profile agent --name codex-fix --storage auto
+boot session run codex-fix -- codex
+# A noninteractive run uses the same root:
+boot session run codex-fix -- codex exec --sandbox workspace-write -- "Implement the task"
+```
+
+Boot sets cwd to the managed root. Codex CLI accepts that directory as its
+workspace; omit `--cd` unless intentionally selecting a directory inside it.
+This is the direct CLI launch path documented in the
+[Codex CLI reference](https://developers.openai.com/codex/cli/reference/).
+Desktop/cloud task creation can have its own checkout policy.
+
+For preparation without a managed session:
+
 ```bash
 boot up /workspace --profile agent --provider local
 boot inspect /workspace --json
@@ -63,6 +95,20 @@ At the beginning of a task, run `boot inspect --json`.
 - Treat Boot constraints as task instructions.
 - Do not print, copy, or infer secret values.
 ```
+
+## Session ownership and results
+
+Use `boot session inspect <name> --json` and `boot session diff <name>` to review
+the result, then `release` and preview `gc`. GC preserves new commits even after
+an external push/merge until the operator explicitly discards that exact session.
+For externally launched editors, claim with `boot session claim <name> --owner
+editor` before launch and release with the same label after stopping it.
+
+The [two-agent example](../examples/agent-sessions/README.md) runs installed Codex
+and Claude against disposable repositories and checks their actual cwd/Git roots,
+checkout registrations, source isolation, and cleanup protection. The
+[session guide](sessions.md) explains snapshots, encrypted environment delivery,
+process groups, and the distinction between read-only intent and OS enforcement.
 
 ## Portable Boot workspace skill
 

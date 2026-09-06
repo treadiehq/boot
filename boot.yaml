@@ -23,6 +23,30 @@ commands:
   lint:
     run: pnpm lint
     repository: boot
+  test-sessions:
+    run: pnpm test:sessions
+    repository: boot
+  build:
+    run: pnpm build
+    repository: boot
+  session-benchmark:
+    run: pnpm benchmark:sessions
+    repository: boot
+  session-agent-demo:
+    run: pnpm demo:sessions
+    repository: boot
+  session-runtime-test:
+    run: pnpm test:sessions:runtime
+    repository: boot
+  session-windows-test:
+    run: pnpm test:sessions:windows
+    repository: boot
+  session-windows-postgres-test:
+    run: pnpm test:sessions:windows:postgres
+    repository: boot
+  session-linux-test:
+    run: pnpm test:sessions:linux
+    repository: boot
   video-check:
     run: pnpm video:check
     repository: boot

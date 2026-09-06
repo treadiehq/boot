@@ -20,7 +20,7 @@ const environmentStatusSchema = z
     secret: z.boolean(),
     source: z.string().optional(),
     available: z.boolean(),
-    availableFrom: z.enum(["process", "boot"]).optional(),
+    availableFrom: z.enum(["process", "boot", "session"]).optional(),
   })
   .strict();
 
@@ -77,6 +77,16 @@ export const workspaceDiagnosticsSchema = z
     environment: z.array(environmentStatusSchema),
     constraints: z.array(z.string()),
     blockers: z.array(z.string()),
+    session: z.object({
+      id: z.string().uuid(), name: z.string(), sourceRoot: z.string(), state: z.string(),
+      access: z.literal("same-user-filesystem"),
+      repositories: z.array(z.object({ id: z.string(), base: z.string(), backend: z.string(), fallbackReason: z.string().nullable(), relativePath: z.string().optional(), submoduleOf: z.string().optional() }).strict()),
+      runtime: z.object({
+        ports: z.array(z.object({ id: z.string(), env: z.string(), port: z.number() }).strict()),
+        databases: z.array(z.object({ id: z.string(), state: z.string(), port: z.number().nullable() }).strict()),
+        protection: z.array(z.string()),
+      }).strict().optional(),
+    }).strict().optional(),
   })
   .strict();
 

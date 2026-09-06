@@ -40,6 +40,42 @@ jobs:
       - name: Distribution E2E
         run: bash scripts/distribution/e2e.sh --binary "$RUNNER_TEMP/boot-linux-x64"
 
+  session-filesystems:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Real APFS sessions and signed release helpers
+        if: runner.os == 'macOS'
+        run: pnpm test:sessions
+        env:
+          BOOT_TEST_REQUIRE_COW: "1"
+      - name: Real Btrfs, XFS, and unsupported tmpfs
+        if: runner.os == 'Linux'
+        run: pnpm test:sessions:linux
+
+  session-postgres:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Owned PostgreSQL resources and independent session databases
+        run: pnpm test:sessions:runtime
+
   windows-binary:
     # Build the Windows binary on a real Windows runner and confirm it launches,
     # so every PR exercises the Windows distribution path (the rest of the suite

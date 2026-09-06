@@ -35,17 +35,18 @@ export async function upCommand(
   const root = path.resolve(workspacePath);
   const definition = await loadWorkspaceDefinition(root);
   const workspace = resolveWorkspace(definition, options.profile);
-  await recordWorkspace(root, workspace.name).catch(() => {
-    // Registry recording is best-effort; up must not fail because of it.
-  });
   const provider = getWorkspaceProvider(options.provider ?? "local");
-  const plan = await provider.plan(root, workspace);
+  const plan = await provider.plan(root, workspace, { probe: !options.dryRun });
 
   if (options.dryRun) {
     if (options.json) logger.info(JSON.stringify(plan, null, 2));
     else renderWorkspacePlan(plan, true);
     return;
   }
+
+  await recordWorkspace(root, workspace.name).catch(() => {
+    // Registry recording is best-effort; previews never reach this point.
+  });
 
   if (!options.json) renderWorkspacePlan(plan);
   const streamServiceEvents = !options.json && options.start === true;
