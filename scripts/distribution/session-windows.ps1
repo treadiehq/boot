@@ -5,11 +5,12 @@ $originalRoot = $env:BOOT_TEST_WORKSPACE_ROOT
 $originalCow = $env:BOOT_TEST_WINDOWS_EXPECT_COW
 $fixtureRoot = Join-Path $env:TEMP ('boot-windows-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $fixtureRoot | Out-Null
+$script:failed = $false
 function Run-Tests([string]$root, [bool]$cow) {
   $env:BOOT_TEST_WORKSPACE_ROOT = $root
   $env:BOOT_TEST_WINDOWS_EXPECT_COW = $(if ($cow) { '1' } else { '0' })
   & node (Join-Path $repoRoot 'node_modules/vitest/vitest.mjs') run src/tests/sessionWindows.test.ts src/tests/sessionWindowsShims.test.ts
-  if ($LASTEXITCODE -ne 0) { throw 'Windows session validation failed.' }
+  if ($LASTEXITCODE -ne 0) { $script:failed = $true }
 }
 try {
   Write-Host 'Testing NTFS fallback and Windows Job Object execution'
@@ -51,3 +52,4 @@ detach vdisk
   $env:BOOT_TEST_WINDOWS_EXPECT_COW = $originalCow
   Remove-Item -LiteralPath $fixtureRoot -Recurse -Force
 }
+if ($script:failed) { throw 'Windows session validation failed.' }

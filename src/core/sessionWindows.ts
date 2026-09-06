@@ -87,7 +87,10 @@ export async function windowsCloneFiles(files: Array<{ source: string; destinati
   let result;
   try { result = await execa(await windowsHelperPath(), ["clone"], { input: files.map(({ source, destination }) => `${source}\0${destination}\0`).join(""), reject: false, windowsHide: true }); }
   catch { throw Object.assign(new Error("Windows CoW requires the Windows session helper and a local ReFS volume."), { code: "EWINCLONE" }); }
-  if (result.exitCode !== 0) throw Object.assign(new Error("Native ReFS block cloning failed; files must support cloning on the same local ReFS volume, without named streams. No full-copy fallback was used."), { code: "EWINCLONE" });
+  if (result.exitCode !== 0) {
+    const nativeCode = result.stderr.match(/Windows session helper failed \((\d+)\)/)?.[1];
+    throw Object.assign(new Error(`Native ReFS block cloning failed${nativeCode ? ` (Windows error ${nativeCode})` : ""}; files must support cloning on the same local ReFS volume, without named streams. No full-copy fallback was used.`), { code: "EWINCLONE" });
+  }
 }
 
 export function sessionEnvironment(...layers: Array<NodeJS.ProcessEnv | Record<string, string>>): NodeJS.ProcessEnv {

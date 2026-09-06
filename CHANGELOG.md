@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.4.0 - 2026-09-06
+
+### Managed agent sessions
+
+- Create independent agent workspaces from selected repositories and profiles
+  with `boot session create`, then run, inspect, diff, claim, release, and collect
+  them through the session lifecycle commands.
+- Share unchanged blocks with APFS clonefile, Linux reflinks, and Windows ReFS
+  block cloning. Automatic storage reports worktree/clone fallbacks; explicit
+  CoW fails when the filesystem cannot support it.
+- Capture initialized submodules recursively at pinned commits, with explicit
+  staged, unstaged, and untracked capture through `--include-working-tree`.
+- Reuse prepared dependencies with explicit CoW includes. Keep source checkouts,
+  indexes, credentials, and session writes independent.
+- Retain active, dirty, committed, or unverifiable sessions during garbage
+  collection. Preview cleanup by default and preserve files on release.
+
+### Session runtime and Windows execution
+
+- Add opt-in port assignments and disposable PostgreSQL 16/17 databases using
+  local Docker Engine 28+ on macOS/Linux. Inject connection settings at launch,
+  preserve database data on release, and remove owned volumes during session GC.
+- Launch Windows agents inside Job Objects with exact argument handling,
+  descendant tracking, cancellation, and cleanup when the supervisor exits.
+  Check Windows store ownership with the current user's SID and directory ACLs.
+- Add native filesystem, runtime, process-failure, and standalone distribution
+  validation workflows, alongside the managed-session guide and examples.
+
 ## 0.2.7 - 2026-07-14
 
 ### Workspace model

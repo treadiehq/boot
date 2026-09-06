@@ -11,6 +11,19 @@ import { windowsCloneFiles, windowsUserSid } from "../core/sessionWindows";
 import { resolveWithinRoot } from "../core/pathUtils";
 import { sessionFixture } from "./sessionFixture";
 
+// These repositories are generated test data with no remotes or credentials.
+// Preserve diagnostics for their failed Git commands without changing CLI output.
+vi.mock("execa", async (original) => {
+  const actual = await original<typeof import("execa")>();
+  return { ...actual, execa: new Proxy(actual.execa, { apply(target, receiver, args) {
+    const child = Reflect.apply(target, receiver, args);
+    if (args[0] === "git" && Array.isArray(args[1]) && args[1].some((value: unknown) => typeof value === "string" && value.includes("boot-session-case-"))) {
+      void child.then((result: { exitCode: number; stderr: string }) => { if (result.exitCode !== 0) console.error("Fixture Git failure:", result.stderr); }, () => {});
+    }
+    return child;
+  } }) };
+});
+
 const windows = process.platform === "win32" ? describe : describe.skip;
 windows("Windows native sessions", () => {
   let fixture: Awaited<ReturnType<typeof sessionFixture>>;
@@ -125,7 +138,8 @@ windows("Windows native sessions", () => {
     const binary = process.env.BOOT_TEST_WINDOWS_BINARY;
     if (!binary) { context.skip("standalone binary supplied by CI"); return; }
     const a = await createSession(fixture.source, { store: fixture.store, storage: cow ? "cow" : "worktree" });
-    const result = await execa(binary, ["session", "run", a.id, "--store", a.store, "--", process.execPath, "-e", "process.exit(41)"], { reject: false });
+    const result = await execa(binary, ["session", "run", a.id, "--store", a.store, "--", process.execPath, "-e", "process.exit(41)"], { reject: false, timeout: 25_000 });
+    if (result.timedOut) console.error("Standalone timeout state:", (await store.findSession(a.id, a.store)).launch);
     expect(result.exitCode).toBe(41);
     expect((await inspectSession(a.id, a.store)).session.lastExit?.code).toBe(41);
   }, 60_000);

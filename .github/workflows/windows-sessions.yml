@@ -23,6 +23,7 @@ permissions:
 
 jobs:
   windows-sessions:
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:

@@ -19,7 +19,14 @@ export async function sessionGit(cwd: string, args: string[], input?: string) {
 
 export async function requireGit(cwd: string, args: string[], input?: string): Promise<string> {
   const result = await sessionGit(cwd, args, input);
-  if (result.exitCode !== 0) throw new Error(`Session Git operation ${args[0]} failed (exit ${result.exitCode ?? "unknown"}). Inspect the repository directly for details.`);
+  if (result.exitCode !== 0) {
+    // Classify known failures without exposing Git's paths, URLs, or output.
+    const reason = /filename too long|file name too long/i.test(result.stderr) ? "; path exceeds Git's supported length"
+      : /dubious ownership|unsafe repository/i.test(result.stderr) ? "; repository ownership rejected by Git"
+      : /not a git repository/i.test(result.stderr) ? "; repository could not be opened"
+      : /permission denied|access is denied/i.test(result.stderr) ? "; filesystem access denied" : "";
+    throw new Error(`Session Git operation ${args[0]} failed (exit ${result.exitCode ?? "unknown"}${reason}). Inspect the repository directly for details.`);
+  }
   return result.stdout;
 }
 
