@@ -173,6 +173,7 @@ public static class BootWindows {
         Trace("agent created " + child.pid);
         try { Check(ResumeThread(child.thread) != 0xffffffff); }
         catch { TerminateProcess(child.process, 127); throw; }
+        CloseHandle(child.thread); child.thread = IntPtr.Zero;
         int cancelled = 0; ManualResetEvent acknowledged = new ManualResetEvent(false);
         Thread control = new Thread(delegate() {
           try {
@@ -189,10 +190,15 @@ public static class BootWindows {
         uint exit = 0; uint lastActive = UInt32.MaxValue; bool childExited = false;
         while (true) {
           if (WaitForSingleObject(parent, 0) == 0) { TerminateJobObject(job, 130); return 130; }
+          // ActiveProcesses is decremented only after an exited process loses
+          // its outstanding references. Save the exit status, then close ours.
+          if (!childExited && WaitForSingleObject(child.process, 0) == 0) {
+            Check(GetExitCodeProcess(child.process, out exit));
+            CloseHandle(child.process); child.process = IntPtr.Zero; childExited = true; Trace("agent exited");
+          }
           Accounting accounting; Check(QueryInformationJobObject(job, 1, out accounting, (uint)Marshal.SizeOf(typeof(Accounting)), IntPtr.Zero));
           if (accounting.active != lastActive) { lastActive = accounting.active; Trace("active processes " + lastActive); }
-          if (!childExited && WaitForSingleObject(child.process, 0) == 0) { childExited = true; Trace("agent exited"); }
-          if (accounting.active == 0) { Check(GetExitCodeProcess(child.process, out exit)); break; }
+          if (childExited && accounting.active == 0) break;
           Thread.Sleep(30);
         }
         writer.WriteLine("done " + exit); Trace("completion sent"); acknowledged.WaitOne(5000); Trace("returning");
