@@ -7,7 +7,6 @@ import {
   listWorkspaces,
   recordWorkspace,
   registryPath,
-  removeWorkspace,
 } from "../core/registry";
 
 let home: string;
@@ -41,13 +40,8 @@ describe("workspace registry", () => {
     await expect(isRegisteredWorkspace(workspace)).resolves.toBe(true);
   });
 
-  it("removes entries and survives a corrupt registry file", async () => {
+  it("survives a corrupt registry file", async () => {
     const workspace = path.join(home, "code");
-    await recordWorkspace(workspace);
-    await removeWorkspace(workspace);
-    await expect(listWorkspaces()).resolves.toEqual([]);
-    await expect(isRegisteredWorkspace(workspace)).resolves.toBe(false);
-
     await fs.mkdir(path.dirname(registryPath()), { recursive: true });
     await fs.writeFile(registryPath(), "not json", "utf8");
     await expect(listWorkspaces()).resolves.toEqual([]);

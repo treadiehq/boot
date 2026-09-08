@@ -91,13 +91,3 @@ export async function isRegisteredWorkspace(root: string): Promise<boolean> {
   const registry = await readRegistry();
   return registry.workspaces.some((entry) => entry.root === absolute);
 }
-
-/** Remove a workspace from the registry. No-op when absent. */
-export async function removeWorkspace(root: string): Promise<void> {
-  const absolute = path.resolve(root);
-  const registry = await readRegistry();
-  const remaining = registry.workspaces.filter((entry) => entry.root !== absolute);
-  if (remaining.length !== registry.workspaces.length) {
-    await writeRegistry({ ...registry, workspaces: remaining });
-  }
-}
