@@ -30,8 +30,9 @@ secrets manager. It describes the complete workspace a person or agent needs,
 including multi-repository structure and project instructions.
 
 The local provider currently creates repository structure and validates a
-bounded set of tools and services. It does not install runtimes or start
-services. It reports unsupported requirements as unresolved.
+bounded set of tools and services. It does not install runtimes; it starts
+declared services only with `--start`. It reports unsupported requirements as
+unresolved.
 
 Boot synchronizes declared structure and encrypted environment data. It does
 not synchronize uncommitted file edits.
