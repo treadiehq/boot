@@ -214,7 +214,7 @@ function planBlockers(
   for (const status of environment) {
     if (!status.available) {
       blockers.push(
-        `${quoteUserValue(status.name)}: required environment variable is not available`,
+        `${JSON.stringify(status.name)}: required environment variable is not available`,
       );
     }
   }

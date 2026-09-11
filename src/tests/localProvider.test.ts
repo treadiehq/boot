@@ -108,6 +108,55 @@ describe("LocalWorkspaceProvider", () => {
     );
   });
 
+  it("does not redact credential-shaped env-var names in missing-variable blockers", async () => {
+    const resolved = resolveWorkspace(
+      workspaceDefinitionSchema.parse({
+        schemaVersion: 1,
+        workspace: { id: "billing", name: "Billing" },
+        repositories: {},
+        env: {
+          required: [{ name: "github_pat_AAAAAAAAAAAAAAAAAAAA", source: "boot", secret: true }],
+        },
+        profiles: { agent: { env: ["github_pat_AAAAAAAAAAAAAAAAAAAA"] } },
+      }),
+      "agent",
+    );
+
+    const plan = await new LocalWorkspaceProvider().plan(root, resolved);
+
+    expect(plan.ready).toBe(false);
+    expect(plan.blockers).toContain(
+      '"github_pat_AAAAAAAAAAAAAAAAAAAA": required environment variable is not available',
+    );
+    expect(plan.blockers.some((blocker) => blocker.includes("[redacted]"))).toBe(false);
+  });
+
+  it("keeps distinct credential-shaped env-var names as distinct un-redacted blockers", async () => {
+    const resolved = resolveWorkspace(
+      workspaceDefinitionSchema.parse({
+        schemaVersion: 1,
+        workspace: { id: "billing", name: "Billing" },
+        repositories: {},
+        env: {
+          required: [
+            { name: "ghp_AAAAAAAAAAAAAAAAAAAA", source: "boot", secret: true },
+            { name: "ghs_BBBBBBBBBBBBBBBBBBBB", source: "boot", secret: true },
+          ],
+        },
+        profiles: { agent: { env: ["ghp_AAAAAAAAAAAAAAAAAAAA", "ghs_BBBBBBBBBBBBBBBBBBBB"] } },
+      }),
+      "agent",
+    );
+
+    const plan = await new LocalWorkspaceProvider().plan(root, resolved);
+
+    expect(plan.ready).toBe(false);
+    expect(plan.blockers).toContain('"ghp_AAAAAAAAAAAAAAAAAAAA": required environment variable is not available');
+    expect(plan.blockers).toContain('"ghs_BBBBBBBBBBBBBBBBBBBB": required environment variable is not available');
+    expect(new Set(plan.blockers).size).toBe(plan.blockers.length);
+    expect(plan.blockers.some((blocker) => blocker.includes("[redacted]"))).toBe(false);
+  });
+
   it("keeps unsupported selected tools as readiness blockers", async () => {
     const resolved = resolveWorkspace(
       workspaceDefinitionSchema.parse({

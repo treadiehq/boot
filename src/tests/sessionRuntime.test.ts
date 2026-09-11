@@ -68,4 +68,27 @@ describe("opt-in session runtime", () => {
     expect((await runSession(a.id, [process.execPath, "-e", "process.exit(0)"], { store: a.store, stdio: "ignore" })).code).toBe(0);
     expect(JSON.parse(await fs.readFile(path.join(fixture.home, "session-runtime-ports.json"), "utf8")).leases).toHaveLength(1);
   });
+  it("removes the not-available blocker for session-supplied runtime env vars with token-shaped names", async () => {
+    const tokenName = "github_pat_AAAAAAAAAAAAAAAAAAAA";
+    const previous = process.env[tokenName];
+    delete process.env[tokenName];
+    try {
+      const definition = parse(await fs.readFile(path.join(fixture.source, "boot.yaml"), "utf8"));
+      definition.runtime = { web: { type: "port", env: tokenName } };
+      definition.profiles.agent.runtime = ["web"];
+      await fs.writeFile(path.join(fixture.source, "boot.yaml"), stringify(definition));
+      await requireGit(fixture.source, ["add", "boot.yaml"]);
+      await requireGit(fixture.source, ["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "-c", "commit.gpgsign=false", "commit", "-m", "runtime"]);
+      const session = await createSession(fixture.source, { store: fixture.store, storage: "clone", runtime: true });
+      const diagnostics = JSON.parse((await execa(process.execPath, ["--import", "tsx", path.resolve("src/index.ts"), "inspect", session.root, "--json"])).stdout);
+      expect(diagnostics.workspace.ready).toBe(true);
+      expect(diagnostics.blockers).toEqual([]);
+      expect(diagnostics.environment).toEqual([
+        expect.objectContaining({ name: tokenName, available: true, availableFrom: "session" }),
+      ]);
+    } finally {
+      if (previous === undefined) delete process.env[tokenName];
+      else process.env[tokenName] = previous;
+    }
+  }, process.platform === "win32" ? 60_000 : 20_000);
 });
