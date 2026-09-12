@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.4.1 - 2026-09-12
+
+### Fixes
+
+- Preserve the major component when displaying Go versions in workspace
+  requirement diagnostics.
+- Clear missing-variable blockers when session runtime resources supply an
+  environment variable whose name resembles an access token.
+- Reject runtime environment variable names that differ only in case on every
+  platform, preventing silent value collisions on Windows. Rename conflicting
+  declarations such as `PORT` and `Port` to distinct names such as `PORT` and
+  `API_PORT` before upgrading.
+- Preserve read-only file modes when cloning session files with Windows ReFS
+  block cloning.
+- Identify session-provided environment variables as available from the session
+  runtime in text-mode `boot inspect` output.
+
+### Documentation and maintenance
+
+- Add reproducible prepared-workspace and parallel PostgreSQL session benchmarks
+  with published results and validation guidance.
+- Clarify that Boot can start declared services and remove an unused internal
+  registry helper.
+
 ## 0.4.0 - 2026-09-06
 
 ### Managed agent sessions
