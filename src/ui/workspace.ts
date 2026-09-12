@@ -36,6 +36,7 @@ function repositoryVerb(repository: RepositoryPlan): string {
 function environmentSource(source: string | undefined): string {
   if (source === "process") return "the current environment";
   if (source === "boot") return "Boot's encrypted storage";
+  if (source === "session") return "the session runtime";
   return "a configured source";
 }
 
