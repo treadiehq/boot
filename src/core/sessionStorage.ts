@@ -68,7 +68,7 @@ export async function treeFingerprint(root: string, options: { allowGit?: boolea
 /** Copy without following symlinks or sharing writable inodes. CoW is strict. */
 export async function copyTree(source: string, destination: string, cow: boolean, options: { skipGit?: boolean; snapshotRoot?: string } = {}): Promise<void> {
   const snapshotRoot = options.snapshotRoot ?? source;
-  const nativeFiles: Array<{ source: string; destination: string }> = [];
+  const nativeFiles: Array<{ source: string; destination: string; mode: number }> = [];
   async function visit(source: string, destination: string): Promise<void> {
   const stat = await fs.lstat(source);
   if (stat.isSymbolicLink()) {
@@ -85,7 +85,7 @@ export async function copyTree(source: string, destination: string, cow: boolean
       await visit(path.join(source, name), path.join(destination, name));
     }
   } else if (stat.isFile()) {
-    if (cow && ["darwin", "win32"].includes(process.platform)) nativeFiles.push({ source, destination });
+    if (cow && ["darwin", "win32"].includes(process.platform)) nativeFiles.push({ source, destination, mode: stat.mode & 0o777 });
     else {
       await fs.copyFile(source, destination, constants.COPYFILE_EXCL | (cow ? constants.COPYFILE_FICLONE_FORCE : 0));
       await fs.chmod(destination, stat.mode & 0o777);
@@ -96,7 +96,10 @@ export async function copyTree(source: string, destination: string, cow: boolean
   }
   await visit(source, destination);
   if (nativeFiles.length) {
-    if (process.platform === "win32") await windowsCloneFiles(nativeFiles);
+    if (process.platform === "win32") {
+      await windowsCloneFiles(nativeFiles);
+      for (const { destination, mode } of nativeFiles) await fs.chmod(destination, mode);
+    }
     else await macCloneFiles(nativeFiles);
   }
 }
