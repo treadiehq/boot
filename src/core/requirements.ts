@@ -90,6 +90,17 @@ export function versionSatisfies(observed: string, requirement: string): boolean
   });
 }
 
+/**
+ * Extract a concise, display-friendly version string from raw probe output.
+ * Unlike {@link numericVersion}, this includes the leading `v` for display and
+ * caps at three components. It does not require a leading word boundary so that
+ * versions printed directly after a word character (e.g. `go1.23.0`) keep their
+ * major component instead of dropping it.
+ */
+function extractObservedVersion(value: string): string | undefined {
+  return value.match(/v?\d+(?:\.\d+){1,2}\b/)?.[0];
+}
+
 const TOOL_PROBES: Record<string, { command: string; args: string[] }> = {
   node: { command: "node", args: ["--version"] },
   pnpm: { command: "pnpm", args: ["--version"] },
@@ -133,7 +144,7 @@ export async function inspectTools(
     statuses.push({
       name,
       required,
-      observed: result.output.match(/\bv?\d+(?:\.\d+){1,2}\b/)?.[0],
+      observed: extractObservedVersion(result.output),
       state: versionSatisfies(result.output, required) ? "available" : "mismatch",
     });
   }
@@ -148,7 +159,7 @@ function observedVersionStatus(
   return {
     name,
     required,
-    observed: observed.match(/\bv?\d+(?:\.\d+){1,2}\b/)?.[0],
+    observed: extractObservedVersion(observed),
     state: versionSatisfies(observed, required) ? "available" : "mismatch",
   };
 }
@@ -252,7 +263,7 @@ async function inspectDocker(
     return inspectDeclaredVersion(name, required, versionCheck, cwd, result.output);
   }
   if (required) return observedVersionStatus(name, required, result.output);
-  return { name, required, observed: result.output.match(/\bv?\d+(?:\.\d+){1,2}\b/)?.[0], state: "available" };
+  return { name, required, observed: extractObservedVersion(result.output), state: "available" };
 }
 
 export interface ServiceInspectOptions {

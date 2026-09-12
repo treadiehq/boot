@@ -248,4 +248,71 @@ describe("requirement inspection", () => {
       detail: expect.stringContaining('add a "check" command'),
     });
   });
+
+  it("extracts the full go version even though it abuts a word character", async () => {
+    execaMock.mockResolvedValue({
+      exitCode: 0,
+      stdout: "go version go1.23.0 linux/amd64",
+      stderr: "",
+    });
+
+    await expect(inspectTools({ go: ">=1.21" })).resolves.toEqual([
+      {
+        name: "go",
+        required: ">=1.21",
+        state: "available",
+        observed: "1.23.0",
+      },
+    ]);
+  });
+
+  it("keeps observed versions for tools whose version starts at a word boundary", async () => {
+    execaMock
+      .mockResolvedValueOnce({ exitCode: 0, stdout: "v22.9.0", stderr: "" })
+      .mockResolvedValueOnce({ exitCode: 0, stdout: "Python 3.12.3", stderr: "" })
+      .mockResolvedValueOnce({ exitCode: 0, stdout: "rustc 1.82.0 (f4b161a 2024-10-03)", stderr: "" });
+
+    await expect(
+      inspectTools({ node: ">=22", python: ">=3", rust: ">=1.8" }),
+    ).resolves.toEqual([
+      { name: "node", required: ">=22", state: "available", observed: "v22.9.0" },
+      { name: "python", required: ">=3", state: "available", observed: "3.12.3" },
+      { name: "rust", required: ">=1.8", state: "available", observed: "1.82.0" },
+    ]);
+  });
+
+  it("extracts an observed version prefixed by a word character from a custom service check", async () => {
+    execaCommandMock
+      .mockResolvedValueOnce({ exitCode: 0, stdout: "ok", stderr: "" })
+      .mockResolvedValueOnce({ exitCode: 0, stdout: "go version go1.23.0 linux/amd64", stderr: "" });
+
+    await expect(
+      inspectService(
+        "gateway",
+        {
+          type: "opensearch",
+          check: "gateway health",
+          version: ">=1.21",
+          versionCheck: "gateway version",
+        },
+        { cwd: "/workspace" },
+      ),
+    ).resolves.toEqual({
+      name: "gateway",
+      required: ">=1.21",
+      state: "available",
+      observed: "1.23.0",
+    });
+  });
+
+  it("extracts the observed docker server version when no requirement is declared", async () => {
+    execaMock.mockResolvedValue({ exitCode: 0, stdout: "27.3.1", stderr: "" });
+
+    await expect(inspectService("docker", { type: "docker" })).resolves.toEqual({
+      name: "docker",
+      required: undefined,
+      state: "available",
+      observed: "27.3.1",
+    });
+  });
 });
