@@ -233,8 +233,8 @@ export const workspaceDefinitionSchema = z
 
     const runtimeEnvNames = new Set<string>();
     for (const [id, resource] of Object.entries(definition.runtime ?? {})) {
-      if (runtimeEnvNames.has(resource.env)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["runtime", id, "env"], message: "runtime environment names must be unique" });
-      runtimeEnvNames.add(resource.env);
+      if (runtimeEnvNames.has(resource.env.toUpperCase())) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["runtime", id, "env"], message: "runtime environment names must be unique" });
+      runtimeEnvNames.add(resource.env.toUpperCase());
       const service = definition.services?.[id];
       if (service && resource.type === "postgres" && !["postgres", "postgresql"].includes(service.type ?? id)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["runtime", id], message: "a PostgreSQL runtime may replace only a matching PostgreSQL service" });
     }

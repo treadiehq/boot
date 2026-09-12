@@ -28,6 +28,7 @@ describe("opt-in session runtime", () => {
     expect(Object.keys(resolveWorkspace(workspaceDefinitionSchema.parse(definition), "agent").runtime!)).toEqual(["web", "api"]);
     expect(workspaceDefinitionSchema.safeParse({ ...definition, runtime: { x: { type: "port", env: "PATH" } } }).success).toBe(false);
     expect(workspaceDefinitionSchema.safeParse({ ...definition, runtime: { ...definition.runtime, api: { type: "port", env: "PORT" } } }).success).toBe(false);
+    expect(workspaceDefinitionSchema.safeParse({ ...definition, runtime: { ...definition.runtime, api: { type: "port", env: "pOrt" } } }).success).toBe(false);
     expect(workspaceDefinitionSchema.safeParse({ ...definition, runtime: { ...definition.runtime, postgres: { type: "postgres", env: "DATABASE_URL", version: "18" } } }).success).toBe(false);
   });
   it("keeps ordinary sessions unchanged and requires selected declarations for opt-in", async () => {
